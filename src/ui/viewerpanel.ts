@@ -2,15 +2,17 @@
 
 import { h } from '../dom';
 import { fmt, type Key, t } from '../i18n';
-import { sortedPercentile } from '../stats';
+import { term } from '../i18n/glossary';
+import { finite, sortedPercentile } from '../stats';
 import { state } from '../state';
 import { renderBoxStats } from '../tools/boxstats';
 import { type HistogramChange, renderHistogram } from '../tools/histogram';
 import { renderProfile } from '../tools/profile';
-import { type Tool, Viewer } from '../viewer';
+import { KINDS } from '../types';
+import { type ProfileAxis, type Tool, Viewer } from '../viewer';
 import { renderHeader } from './header';
 
-type Tab = 'pixel' | 'profile' | 'box' | 'histogram' | 'header';
+export type Tab = 'pixel' | 'profile' | 'box' | 'histogram' | 'header';
 type RangeMode = 'minmax' | 'p995' | 'p99' | 'manual';
 
 const TABS: { id: Tab; label: Key; tool: Tool }[] = [
@@ -20,6 +22,18 @@ const TABS: { id: Tab; label: Key; tool: Tool }[] = [
   { id: 'histogram', label: 'tab.histogram', tool: 'pixel' },
   { id: 'header', label: 'tab.header', tool: 'pixel' },
 ];
+
+export interface ShowOptions {
+  tab?: Tab;
+  profile?: { axis: ProfileAxis; index: number | null };
+}
+
+/** A readable name for a master id, e.g. "koondtasaväljakaader g". */
+export function masterTitle(id: string): string {
+  const m = state.masters.get(id);
+  if (!m) return id;
+  return t('master.title', { kind: term(m.kind), filter: m.filter ? ' ' + m.filter : '' });
+}
 
 export class ViewerPanel {
   readonly element = h('section', { class: 'viewer-panel' });
@@ -34,6 +48,7 @@ export class ViewerPanel {
   private zoomLabel = h('span', { class: 'zoom-label' });
   private toolArea = h('div', { class: 'tool-area' });
   private sortedCache = new WeakMap<Float32Array, Float32Array>();
+  private shownData: Float32Array | null = null;
 
   constructor() {
     this.viewer = new Viewer({
@@ -46,18 +61,26 @@ export class ViewerPanel {
       zoom: (s) => (this.zoomLabel.textContent = `${fmt(s * 100, 0)} %`),
     });
     state.on((kind) => {
-      if (kind === 'selection' || kind === 'frames') this.showFrame();
+      if (kind === 'selection' || kind === 'frames' || kind === 'masters') this.showImage();
+      if (kind === 'overlay' || kind === 'settings') this.updateOverlay();
     });
     this.render();
   }
 
+  /** Shows an image, optionally on a given tab and profile line. */
+  show(id: string, opt: ShowOptions = {}): void {
+    if (opt.tab) this.tab = opt.tab;
+    state.select(id);
+    this.showImage();
+    if (opt.profile) this.viewer.setProfile(opt.profile.axis, opt.profile.index);
+    this.render();
+    this.element.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+
   /** Rebuilds the controls, e.g. after a language change. The canvas is kept. */
   render(): void {
-    const frame = state.frame(state.selectedId);
     this.element.replaceChildren(
-      h('div', { class: 'viewer-head' },
-        h('h2', {}, frame ? frame.meta.fileName : t('viewer.title')),
-      ),
+      h('div', { class: 'viewer-head' }, this.imageSelect()),
       this.toolbar(),
       this.viewer.element,
       this.readout,
@@ -76,6 +99,28 @@ export class ViewerPanel {
     this.renderTool();
   }
 
+  private imageSelect(): HTMLElement {
+    if (state.frames.length === 0) return h('h2', {}, t('viewer.title'));
+    const groups: HTMLElement[] = [];
+    if (state.masters.size) {
+      groups.push(h('optgroup', { label: t('viewer.masters') },
+        [...state.masters.keys()].map((id) => h('option', { value: id, selected: id === state.selectedId }, masterTitle(id)))));
+    }
+    for (const kind of KINDS) {
+      const frames = state.frames.filter((f) => f.meta.kind === kind);
+      if (!frames.length) continue;
+      groups.push(h('optgroup', { label: term(kind) },
+        frames.map((f) => h('option', { value: f.meta.id, selected: f.meta.id === state.selectedId },
+          `${f.meta.filter ? f.meta.filter + ' · ' : ''}${f.meta.fileName}`))));
+    }
+    return h('label', { class: 'image-select' }, h('span', { class: 'sr-only' }, t('viewer.choose')),
+      h('select', {
+        onchange: (e: Event) => state.select((e.target as HTMLSelectElement).value),
+      },
+      state.selectedId ? null : h('option', { value: '', selected: true }, t('viewer.choose')),
+      groups));
+  }
+
   private toolbar(): HTMLElement {
     const manual = this.rangeMode === 'manual';
     const numberInput = (value: number, onChange: (v: number) => void, label: Key) =>
@@ -83,7 +128,7 @@ export class ViewerPanel {
         h('input', {
           type: 'number',
           step: 'any',
-          value: String(Math.round(value * 100) / 100),
+          value: String(Math.round(value * 1000) / 1000),
           disabled: !manual,
           onchange: (e: Event) => {
             const v = Number((e.target as HTMLInputElement).value);
@@ -95,6 +140,7 @@ export class ViewerPanel {
       onchange: (e: Event) => {
         this.rangeMode = (e.target as HTMLSelectElement).value as RangeMode;
         this.updateRange();
+        this.viewer.setRange(this.black, this.white);
         this.render();
       },
     }, (['minmax', 'p995', 'p99', 'manual'] as RangeMode[]).map((m) =>
@@ -122,16 +168,16 @@ export class ViewerPanel {
   private sorted(data: Float32Array): Float32Array {
     let s = this.sortedCache.get(data);
     if (!s) {
-      s = data.filter(Number.isFinite).sort();
+      s = finite(data).sort();
       this.sortedCache.set(data, s);
     }
     return s;
   }
 
   private updateRange(): void {
-    const frame = state.frame(state.selectedId);
-    if (!frame || this.rangeMode === 'manual') return;
-    const s = this.sorted(frame.image.data);
+    const v = state.viewable(state.selectedId);
+    if (!v || this.rangeMode === 'manual') return;
+    const s = this.sorted(v.image.data);
     if (s.length === 0) return;
     const p = this.rangeMode === 'p995' ? 0.5 : this.rangeMode === 'p99' ? 1 : 0;
     this.black = p ? sortedPercentile(s, p) : s[0];
@@ -143,42 +189,55 @@ export class ViewerPanel {
     if (this.tab === 'histogram') this.renderTool();
   }
 
-  private showFrame(): void {
-    const frame = state.frame(state.selectedId);
-    this.updateRange();
-    this.viewer.setRange(this.black, this.white);
-    this.viewer.setImage(frame ? {
-      width: frame.image.width,
-      height: frame.image.height,
-      data: frame.image.data,
-      flipY: String(frame.image.header.ROWORDER ?? '').trim().toUpperCase() !== 'TOP-DOWN',
-    } : null);
+  private updateOverlay(): void {
+    const v = state.viewable(state.selectedId);
+    // The trim region only makes sense on raw (untrimmed) frames
+    const region = v && !v.isMaster ? (state.trimPreview ?? state.settings.trim ?? null) : null;
+    this.viewer.setRegion(region);
+  }
+
+  private showImage(): void {
+    const v = state.viewable(state.selectedId);
+    const data = v?.image.data ?? null;
+    if (data !== this.shownData) {
+      this.shownData = data;
+      this.updateRange();
+      this.viewer.setRange(this.black, this.white);
+      this.viewer.setImage(v ? {
+        width: v.image.width,
+        height: v.image.height,
+        data: v.image.data,
+        flipY: String(v.image.header.ROWORDER ?? '').trim().toUpperCase() !== 'TOP-DOWN',
+      } : null);
+    }
+    this.updateOverlay();
     this.render();
   }
 
   private showReadout(p: { x: number; y: number; value: number } | null): void {
-    if (!state.frame(state.selectedId)) {
+    if (!state.viewable(state.selectedId)) {
       this.readout.textContent = t('viewer.empty');
     } else if (!p) {
       this.readout.textContent = t('viewer.hover');
     } else {
-      this.readout.textContent = t('viewer.readout', { x: String(p.x + 1), y: String(p.y + 1), v: fmt(p.value, 2) });
+      this.readout.textContent = t('viewer.readout', { x: String(p.x + 1), y: String(p.y + 1), v: fmt(p.value, 3) });
     }
   }
 
   private renderTool(): void {
-    const frame = state.frame(state.selectedId);
-    if (!frame) {
+    const v = state.viewable(state.selectedId);
+    if (!v) {
       this.toolArea.replaceChildren();
       return;
     }
-    const { data, width, height } = frame.image;
+    const { data, width, height } = v.image;
     let content: HTMLElement;
     switch (this.tab) {
       case 'pixel':
         content = h('div', { class: 'tool-out' },
           h('p', { class: 'hint' }, t('pixel.hint')),
-          h('p', { class: 'hint' }, t('pixel.coords')));
+          h('p', { class: 'hint' }, t('pixel.coords')),
+          v.isMaster && state.settings.trim ? h('p', { class: 'hint' }, t('pixel.trimmed')) : null);
         break;
       case 'profile': {
         const p = this.viewer.getProfile();
@@ -204,7 +263,7 @@ export class ViewerPanel {
         });
         break;
       case 'header':
-        content = renderHeader(frame.image.cards, state.profile, this.headerFilter, (q) => (this.headerFilter = q));
+        content = renderHeader(v.image.cards, state.profile, this.headerFilter, (q) => (this.headerFilter = q));
         break;
     }
     this.toolArea.replaceChildren(content);

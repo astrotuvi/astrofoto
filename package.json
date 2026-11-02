@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "fflate": "^0.8.3"
+    "fflate": "^0.8.3",
+    "marked": "^18.1.2"
   },
   "devDependencies": {
     "typescript": "^7.0.2",

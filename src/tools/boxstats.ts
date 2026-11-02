@@ -14,6 +14,8 @@ export function renderBoxStats(data: Float32Array, width: number, box: Region | 
   const s = boxStats(data, width, box);
   const row = (label: string, tip: string, value: string) =>
     h('tr', {}, h('th', { title: tip }, h('span', { class: 'term' }, label)), h('td', { class: 'num' }, value));
+  // Normalised images (flats) have values near 1, so they need more decimals
+  const d = Math.abs(s.median) < 10 ? 4 : 2;
   const w = box.x1 - box.x0 + 1;
   const hgt = box.y1 - box.y0 + 1;
   return h('div', { class: 'tool-out' },
@@ -24,11 +26,11 @@ export function renderBoxStats(data: Float32Array, width: number, box: Region | 
     h('table', { class: 'stats' },
       h('tbody', {},
         row(t('stat.n'), t('stat.nTip'), fmt(s.n, 0)),
-        row(t('stat.mean'), t('stat.meanTip'), fmt(s.mean, 2)),
-        row(t('stat.median'), t('stat.medianTip'), fmt(s.median, 2)),
-        row(t('stat.std'), t('stat.stdTip'), fmt(s.std, 2)),
-        row(t('stat.min'), t('stat.minTip'), fmt(s.min, 2)),
-        row(t('stat.max'), t('stat.maxTip'), fmt(s.max, 2)),
+        row(t('stat.mean'), t('stat.meanTip'), fmt(s.mean, d)),
+        row(t('stat.median'), t('stat.medianTip'), fmt(s.median, d)),
+        row(t('stat.std'), t('stat.stdTip'), fmt(s.std, d)),
+        row(t('stat.min'), t('stat.minTip'), fmt(s.min, d)),
+        row(t('stat.max'), t('stat.maxTip'), fmt(s.max, d)),
       )),
   );
 }

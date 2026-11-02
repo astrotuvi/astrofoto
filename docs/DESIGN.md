@@ -2,7 +2,7 @@
 
 A browser app for reducing monochrome CCD images in FITS format and combining them into colour images. It is built as a learning tool for an after-school astronomy project.
 
-Status: milestone 1 (viewer) implemented. Last updated 2026-11-02.
+Status: milestones 1 (viewer) and 2 (trim and master frames) implemented. Last updated 2026-11-02.
 
 ---
 
@@ -78,7 +78,7 @@ In this document, pixel coordinates are **1-based**, the convention used by FITS
 |---|---|
 | Columns 1–4 and 517–524 stay at bias level, even in flats (prescan/overscan). Columns 4 and 517 are partly exposed. | A **Trim** step comes before all other processing. The default region is x = 5–516 (512 columns) and y = 1–512. It is detected from the column profile of a flat, but the student finds it first (§4.2). |
 | The bias level is about 1454 ADU, and the first rows are about 30 ADU lower. | A median master bias is used, not a single number. |
-| (dark − bias) is about 2 ADU in 30 s, roughly 0.07 ADU/s. Some hot pixels reach about 2000 ADU. | The darks match the light exposure (30 s), so no scaling is needed. The dark is still useful because of the hot pixels. Flats only have the bias subtracted by default. |
+| The master dark (median of dark − bias) is about 4 ADU in 30 s, roughly 0.13 ADU/s, with a few warm pixels up to about 90 ADU. Single darks have cosmic-ray hits up to about 5000 ADU. | The darks match the light exposure (30 s), so no scaling is needed. The dark still removes the warm pixels, and the median removes the cosmic rays. Flats only have the bias subtracted by default. |
 | Flat levels vary from about 30 000 to 43 000 ADU within a filter. | Each flat **must** be divided by its own median before combining. |
 | Flats are from a different night than the lights. | Master flats are matched to lights **by filter only**, not by date. |
 | `R` (Johnson) and `r` (Sloan) are different filters. | Filter names are **case-sensitive** and never changed. Bias and dark frames ignore `FILTER`. |
@@ -305,8 +305,8 @@ Planned tasks for the reference dataset:
 | 2 | Trim | From a flat's column profile, find the first and last column that receives light. Why do unexposed columns exist? (Only if the camera has overscan.) | 5 and 516 |
 | 3 | Bias | Measure the mean and noise of one bias frame. | ≈ 1454 ADU, noise to be measured |
 | 4 | Bias | Predict the noise of a master bias made of 25 frames, then measure it. | ≈ 1/5 of a single frame (1/√N) |
-| 5 | Dark | Calculate the dark current in ADU/s. Is a dark frame needed? What does it still fix? | ≈ 0.07 ADU/s; hot pixels |
-| 6 | Flat | How much darker are the edges than the centre of the normalised master flat, in %? | to be measured |
+| 5 | Dark | Calculate the dark current in ADU/s. Is a dark frame needed? What does it still fix? | ≈ 0.13 ADU/s; hot pixels |
+| 6 | Flat | Measure the normalised master flat in the centre and the four corners. How much darker is the darkest corner, in %? Is it vignetting? | 6–13 % depending on filter; one side is darker (a slope from the twilight sky), not all edges |
 | 7 | Flat | Calibrate without the flat and compare the background at the centre and the edge. | experiment |
 | 8 | Header | Calculate the plate scale in ″/px and the field of view in ′. | ≈ 0.45″/px, ≈ 3.8′ |
 | 9 | Alignment | How large is the shift between the first and last frame, in px and ″? What causes it? | up to ≈ 4 px ≈ 1.8″; tracking |
@@ -539,11 +539,11 @@ interface InstrumentProfile {
 }
 
 interface ProcessingSettings {
-  trim: { x0: number; x1: number; y0: number; y1: number } | null;  // copied from the profile, editable
+  trim?: { x0: number; x1: number; y0: number; y1: number } | null;  // undefined = not decided; null = no trimming
   useBias: boolean; useDark: boolean; useFlat: boolean;
   darkForFlats: boolean;
-  combineMethod: 'median' | 'mean' | 'sigmaClip';
-  sigmaClip?: { low: number; high: number };
+  combine: Record<'bias' | 'dark' | 'flat', 'median' | 'mean' | 'sigmaClip'>;
+  sigmaClip?: { low: number; high: number };   // default 3σ / 3σ, σ from the median absolute deviation
   saturationLevel: number;       // raw ADU
   referenceId?: string;
   alignModel: 'shift' | 'shiftRotation';
@@ -573,7 +573,8 @@ interface Project {
   versions: { id: string; name: string; settings: ProcessingSettings; created: string }[];
   compositions: Composition[];
   steps: Partial<Record<StepId, { done: boolean; acceptedAuto?: boolean }>>;
-  answers: Record<string, { value: string; correct?: boolean; attempts: number; hintsUsed: number }>;
+  answers: Record<string, { value: string; correct?: boolean; attempts: number }>;  // key: <taskId>.<partId>
+  hintsUsed: Record<string, number>;                    // hint levels opened, per task
   mentorComments: Record<string, { text: string; date: string }[]>;
   report: {
     sections: Partial<Record<'title' | 'data' | 'processing' | 'tasks' | 'colour' | 'mentorComments', boolean>>;
@@ -619,7 +620,9 @@ src/
     defaults.ts        built-in keyword aliases, frame type values, filter wavelengths
     profiles/*.json    built-in profiles, starting with to-azt12-andor.json
   stats.ts             median, mean, standard deviation, percentiles, histogram
-  calibrate.ts         trim, master bias/dark/flat, apply calibration
+  calibrate.ts         trim, combine, master bias/dark/flat, trim detection, apply calibration
+  masters.ts           builds master frames from the state, rebuilds them when inputs change
+  checks.ts            consistency checks (§2.4)
   align.ts             centroid, star finding, matching (nearest neighbour, 180° flip, triangles),
                        shift/rotation fit, bilinear transform, common crop
   stack.ts             median/mean combine
@@ -639,18 +642,23 @@ src/
     plot.ts            line/step plots with labelled axes
     profile.ts  boxstats.ts  histogram.ts  starprofile.ts  distance.ts  compare.ts
   tasks/
-    index.ts           task definitions and expected-value functions
+    index.ts           task definitions, answer checking
+    context.ts         values computed from the student's data (MeasureContext)
   i18n/
     index.ts           t(), language switch, number formatting
     et.ts  en.ts       interface strings
     glossary.ts
   content/
+    index.ts           loads and renders the Markdown files
     et/steps/*.md  en/steps/*.md    explanations ("Miks?" + "Uuri lähemalt")
     et/tasks/*.md  en/tasks/*.md    task texts and hints
   ui/
     files.ts  profile.ts  calibrate.ts  align.ts  color.ts  resume.ts  glossary.ts  settings.ts
     viewerpanel.ts     viewer with toolbar, readout and tool tabs
     header.ts          FITS header viewer
+    explain.ts         "Miks?" / "Uuri lähemalt" panel
+    task.ts            task with answer fields and hint levels
+    checks.ts          list of check results
 test/                  Vitest tests with synthetic FITS files (helpers.ts)
 docs/
   DESIGN.md            this document

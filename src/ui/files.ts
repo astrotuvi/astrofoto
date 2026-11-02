@@ -6,7 +6,11 @@ import { explain, term } from '../i18n/glossary';
 import { type ImportResult, importFiles, type PickedFile, picked } from '../import';
 import { filterInfo, headerValue, pixelScale } from '../instrument/profile';
 import { state } from '../state';
+import { runChecks } from '../checks';
+import { tasksFor } from '../tasks';
 import { KINDS, type FrameMeta, type Kind } from '../types';
+import { renderChecks } from './checks';
+import { renderTasks } from './task';
 
 type SortKey = 'fileName' | 'kind' | 'filter' | 'exposure' | 'dateObs';
 
@@ -22,7 +26,7 @@ export class FilesStep {
   constructor() {
     state.on((kind) => {
       if (kind === 'selection') this.markSelected();
-      else this.render();
+      else if (kind === 'frames' || kind === 'profile') this.render();
     });
     this.render();
   }
@@ -30,7 +34,8 @@ export class FilesStep {
   render(): void {
     // Keep the table's scroll position when it is rebuilt
     const scrollTop = this.element.querySelector('.file-table .scroll')?.scrollTop ?? 0;
-    const parts = [this.loader(), this.importMessages(), this.profileBox(), this.summary(), this.table()];
+    const parts = [this.loader(), this.importMessages(), this.profileBox(), this.summary(), this.checks(), this.table(),
+      state.frames.length ? renderTasks(tasksFor('files')) : null];
     this.element.replaceChildren(...parts.filter((p): p is HTMLElement => p !== null));
     const scroll = this.element.querySelector('.file-table .scroll');
     if (scroll) scroll.scrollTop = scrollTop;
@@ -177,6 +182,14 @@ export class FilesStep {
       ),
       h('p', { class: 'hint' }, t('files.memory', { n: state.frames.length, mb: fmt(state.memoryBytes() / 1e6, 1) })),
     );
+  }
+
+  private checks(): HTMLElement | null {
+    if (state.frames.length === 0) return null;
+    const list = runChecks();
+    return h('div', { class: 'checks-box' },
+      h('h3', {}, t('files.checks')),
+      list.length ? renderChecks(list) : h('p', { class: 'ok' }, t('files.checksOk')));
   }
 
   private sorted(): FrameMeta[] {

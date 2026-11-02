@@ -13,7 +13,7 @@ export interface Stats {
 
 /** Finite values of `data` (an image of the given width) inside `region`, or all of it. */
 export function values(data: Float32Array, width: number, region?: Region): Float32Array {
-  if (!region) return data.filter(Number.isFinite);
+  if (!region) return finite(data);
   const out = new Float32Array((region.x1 - region.x0 + 1) * (region.y1 - region.y0 + 1));
   let n = 0;
   for (let y = region.y0; y <= region.y1; y++) {
@@ -33,8 +33,52 @@ export function sortedMedian(sorted: Float32Array): number {
   return n % 2 ? sorted[m] : (sorted[m - 1] + sorted[m]) / 2;
 }
 
+/** k-th smallest value (0-based) of `a`, reordering `a` in place (quickselect). */
+function select(a: Float32Array, k: number): number {
+  let lo = 0;
+  let hi = a.length - 1;
+  while (hi > lo) {
+    const pivot = a[(lo + hi) >> 1];
+    let i = lo;
+    let j = hi;
+    while (i <= j) {
+      while (a[i] < pivot) i++;
+      while (a[j] > pivot) j--;
+      if (i <= j) {
+        const tmp = a[i]; a[i] = a[j]; a[j] = tmp;
+        i++; j--;
+      }
+    }
+    if (k <= j) hi = j;
+    else if (k >= i) lo = i;
+    else break;
+  }
+  return a[k];
+}
+
+/** Copy of the finite values. A plain loop: typed-array filter() is slow on large images. */
+export function finite(v: Float32Array): Float32Array {
+  const out = new Float32Array(v.length);
+  let n = 0;
+  for (let i = 0; i < v.length; i++) {
+    const x = v[i];
+    if (x - x === 0) out[n++] = x;
+  }
+  return n === v.length ? out : out.slice(0, n);
+}
+
+/** Median of the finite values, without sorting the whole array. */
 export function median(v: Float32Array): number {
-  return sortedMedian(Float32Array.from(v).sort());
+  const a = finite(v);
+  const n = a.length;
+  if (n === 0) return NaN;
+  const m = n >> 1;
+  const upper = select(a, m);
+  if (n % 2) return upper;
+  // The lower middle value is the largest of the values left of m after selection
+  let lower = -Infinity;
+  for (let i = 0; i < m; i++) if (a[i] > lower) lower = a[i];
+  return (lower + upper) / 2;
 }
 
 /** Percentile p (0–100) of a sorted array, with linear interpolation. */

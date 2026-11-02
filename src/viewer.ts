@@ -40,6 +40,7 @@ export class Viewer {
   private profileAxis: ProfileAxis = 'row';
   private profileIndex: number | null = null;
   private box: Region | null = null;
+  private region: Region | null = null;
   private drag: { mode: 'pan' | 'box' | 'click'; startX: number; startY: number; ox: number; oy: number; ix: number; iy: number } | null = null;
 
   constructor(private events: ViewerEvents = {}) {
@@ -86,6 +87,18 @@ export class Viewer {
   setProfileAxis(axis: ProfileAxis): void {
     this.profileAxis = axis;
     this.profileIndex = null;
+    this.draw();
+  }
+
+  setProfile(axis: ProfileAxis, index: number | null): void {
+    this.profileAxis = axis;
+    this.profileIndex = index;
+    this.draw();
+  }
+
+  /** A dashed outline, e.g. the trim region. */
+  setRegion(r: Region | null): void {
+    this.region = r;
     this.draw();
   }
 
@@ -282,6 +295,20 @@ export class Viewer {
         ctx.lineTo(x, this.offsetY + img.height * this.scale);
       }
       ctx.stroke();
+    }
+    if (this.region) {
+      const r = this.region;
+      const top = Math.min(this.displayRow(r.y0), this.displayRow(r.y1));
+      ctx.save();
+      ctx.strokeStyle = '#4caf50';
+      ctx.setLineDash([6 * dpr, 4 * dpr]);
+      ctx.strokeRect(
+        this.offsetX + r.x0 * this.scale,
+        this.offsetY + top * this.scale,
+        (r.x1 - r.x0 + 1) * this.scale,
+        (r.y1 - r.y0 + 1) * this.scale,
+      );
+      ctx.restore();
     }
     if (this.box) {
       const b = this.box;

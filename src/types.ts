@@ -44,3 +44,17 @@ export interface InstrumentProfile {
   /** True for a profile made on import that nobody has checked yet. */
   generated?: boolean;
 }
+
+export type CombineMethod = 'median' | 'mean' | 'sigmaClip';
+
+export interface ProcessingSettings {
+  /** undefined = not decided yet; null = no trimming. Copied from the student's decision. */
+  trim?: Region | null;
+  combine: { bias: CombineMethod; dark: CombineMethod; flat: CombineMethod };
+  useBias: boolean;
+  useDark: boolean;
+  useFlat: boolean;
+  /** Subtract the dark (scaled to each flat's exposure) from the flats too. */
+  darkForFlats: boolean;
+  saturationLevel?: number;
+}
