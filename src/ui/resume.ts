@@ -77,6 +77,7 @@ export function renderResume(go: (target: Target) => void, warning?: string): HT
       h('input', {
         type: 'text',
         value: state.info[key],
+        placeholder: key === 'title' ? t('project.defaultTitle') : '',
         onchange: (e: Event) => state.setInfo({ [key]: (e.target as HTMLInputElement).value.trim() }),
       }));
 

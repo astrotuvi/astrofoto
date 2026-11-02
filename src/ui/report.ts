@@ -79,6 +79,7 @@ export class ReportPage {
         h('input', {
           type: 'text',
           value: state.info[key],
+          placeholder: key === 'title' ? t('project.defaultTitle') : '',
           onchange: (e: Event) => state.setInfo({ [key]: (e.target as HTMLInputElement).value.trim() }),
         }));
     return h('section', { class: 'phase no-print' },

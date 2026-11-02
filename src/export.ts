@@ -4,6 +4,7 @@ import { zipSync } from 'fflate';
 import type { ColorImage } from './color';
 import { type FitsImage, writeFits } from './fits';
 import { filterInfo } from './instrument/profile';
+import { projectTitle } from './project';
 import { state } from './state';
 
 declare const __APP_VERSION__: string;
@@ -62,10 +63,9 @@ export function fitsZip(files: FitsExport[]): Uint8Array {
   return zipSync(Object.fromEntries(files.map((f) => [f.fileName, [fitsBytes(f), { level: 1 }]])));
 }
 
-/** Base for exported file names: the project title or the object name. */
+/** Base for exported file names: the project title. */
 export function exportBase(): string {
-  const title = state.info.title || String(state.framesOf('light')[0]?.meta.header.OBJECT ?? '') || 'astrofoto';
-  return safe(title);
+  return safe(projectTitle());
 }
 
 /**

@@ -3,7 +3,7 @@
 import { h } from '../dom';
 import { canSaveInPlace, Cancelled, type FileHandle, pickFile, saveFile } from '../fileio';
 import { type Key, t } from '../i18n';
-import { open, PROJECT_EXT, ProjectError, serialize, suggestedName } from '../project';
+import { open, PROJECT_EXT, ProjectError, projectTitle, serialize, suggestedName } from '../project';
 import { state } from '../state';
 
 const TYPE = { description: 'Astrofoto', accept: { 'application/zip': [PROJECT_EXT] } };
@@ -37,7 +37,7 @@ export class ProjectBar {
   render(): void {
     this.element.dataset.dirty = state.dirty ? '1' : '';
     const hasFrames = state.frames.length > 0;
-    const name = this.handle?.name ?? (state.info.title || null);
+    const name = this.handle?.name ?? projectTitle();
     this.element.replaceChildren(h('div', { class: 'project-inner' },
       h('div', { class: 'segmented', role: 'group', 'aria-label': t('project.label') },
         h('button', { type: 'button', onclick: () => this.newProject(), disabled: this.busy }, t('project.new')),
@@ -51,7 +51,7 @@ export class ProjectBar {
         canSaveInPlace ? h('button', { type: 'button', onclick: () => void this.save(true), disabled: this.busy || !hasFrames }, t('project.saveAs')) : null,
       ),
       hasFrames ? h('span', { class: 'project-name' + (state.dirty ? ' dirty' : ''), title: state.dirty ? t('project.unsaved') : undefined },
-        name ?? t('project.untitled'), state.dirty ? ' •' : '') : null,
+        name, state.dirty ? ' •' : '') : null,
       this.message ? h('span', { class: `project-message ${this.message.level}`, role: 'status' }, this.message.text) : null,
     ));
   }

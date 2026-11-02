@@ -2,7 +2,7 @@
 
 A browser app for reducing monochrome CCD images in FITS format and combining them into colour images. It is built as a learning tool for an after-school astronomy project.
 
-Status: milestones 1–7 (viewer, master frames, calibration and project file, alignment and stacking, colour and export, versions and mentor mode, report) implemented. Last updated 2026-11-02.
+Status: milestones 1–8 (viewer, master frames, calibration and project file, alignment and stacking, colour and export, versions and mentor mode, report, publishing and offline use) implemented. Last updated 2026-11-02.
 
 ---
 
@@ -340,7 +340,7 @@ The report is one of the app's most important outputs. It is rarely the final do
 - Any figure or measurement in the app has an **"Lisa aruandesse"** button (add to report). It saves a snapshot: the image or plot with its current settings, and the numbers.
 - The **report page** lists the collected items in order. The student can reorder them, remove them, and edit the figure captions.
 - These sections are added automatically, and each can be turned off:
-  - title, student name, date;
+  - title, student name, date. Without a project title, the report, the project file and the exported files use "Minu projekt" (my project), never the object name;
   - data description: object, telescope, camera, filters, number of frames and exposures, from the headers;
   - processing steps, with formulas and parameters, written as readable sentences from the log, not as a raw log;
   - the tasks with the student's answers and measured values;
@@ -469,8 +469,11 @@ The app must work on the student's computer **without an internet connection**. 
 - The student opens the GitHub Pages address once while online. A **service worker** stores all the app's files in the browser.
 - After that, the app opens from the same address, or from the installed icon, **without a connection**.
 - In Chrome and Edge, the app can be **installed** with the install button in the address bar. It then gets its own window and a desktop or dock icon. In Safari (macOS 14+) the same is done with "Add to Dock". Firefox does not install PWAs, but the offline cache still works when the address is opened in a tab.
-- **Updates:** when the app is online and a new version exists, the app shows the message "Uus versioon on saadaval" (a new version is available) with a button to reload. It never reloads by itself, so work in progress is not interrupted.
-- The **app version** is shown on the About page and saved in the project file (§6.5).
+- **Updates:** when the app is online and a new version exists, the app shows the message "Uus versioon on saadaval" (a new version is available) with a button to reload and a "Hiljem" (later) button. If the project has unsaved changes, the message asks to save first, and the usual unsaved-changes warning still applies. It never reloads by itself, so work in progress is not interrupted. The browser looks for a new version when the app is opened and the app looks again every hour; the About page also has a "Otsi uuendusi" (check for updates) button.
+- **Install button:** where the browser offers it (Chrome, Edge), the About page has its own "Paigalda rakendus" button, next to short install instructions for each browser.
+- **Icons:** `favicon.svg` (the Ring Nebula M57), PNG icons of 192 and 512 px, a maskable 512 px icon and an Apple touch icon, all in `public/`.
+- The **app version** is shown on the About page ("Teave", linked from the footer) and saved in the project file (§6.5).
+- **Publishing:** the workflow `.github/workflows/pages.yml` runs the tests, builds and deploys `dist/` to GitHub Pages on every push to `main`. Pages must be set to "GitHub Actions" as its source in the repository settings.
 
 #### B. Offline file (`astrofoto.html`), the fallback
 
@@ -479,7 +482,9 @@ The app must work on the student's computer **without an internet connection**. 
 - Opened from `file://`, the app works fully, but:
   - it does not update itself; a new version means a new file;
   - `localStorage` (language, mentor mode) may be shared with other local files or cleared more often, so the app always works with the defaults.
-- The offline file is published as a **GitHub Release** attachment with each version, and linked from the About page.
+- The offline file is published as a **GitHub Release** attachment with each version, and linked from the About page (`releases/latest/download/astrofoto.html`).
+- **Building it:** `npm run build:offline` writes `dist-offline/astrofoto.html`. In this mode the service worker registration is replaced by `src/pwa-none.ts`, nothing is copied from `public/`, and the icon is inlined as a data URL.
+- **Releasing:** pushing a tag `vX.Y.Z` that matches the version in `package.json` runs `.github/workflows/release.yml`, which runs the tests, builds the offline file and creates the release with it attached.
 
 #### What must not depend on the network
 
@@ -666,7 +671,8 @@ src/
     figures.ts         renders figures to PNG (fixed width, labels, scale bar, white background)
     html.ts            report page blocks + clipboard copy
     docx.ts            .docx export and the figures zip
-  offline.ts           service worker registration, update prompt
+  pwa.ts               service worker registration, update check, install prompt (§6.3)
+  pwa-none.ts          stand-in for the registration in the offline file
   tools/
     plot.ts            line/step plots with labelled axes
     profile.ts  boxstats.ts  histogram.ts  starprofile.ts  distance.ts
@@ -686,6 +692,7 @@ src/
     viewerpanel.ts     viewer with toolbar, readout and tool tabs
     compare.ts         "Võrdle" tab: blink/split, versions list
     report.ts          report page: sections, items, captions, downloads, print
+    about.ts           About page: version, offline status, install, updates, offline file
     comments.ts        mentor comments on steps and tasks
     header.ts          FITS header viewer
     explain.ts         "Miks?" / "Uuri lähemalt" panel
@@ -695,6 +702,8 @@ src/
 test/                  Vitest tests with synthetic FITS files (helpers.ts)
 docs/
   DESIGN.md            this document
+public/                favicon and app icons
+.github/workflows/     pages.yml (GitHub Pages), release.yml (offline file on a version tag)
 ```
 
 ---
@@ -717,6 +726,7 @@ Every milestone includes Estonian and English texts for its own features.
 
 ## 8. Open questions
 
+- **Offline use in other browsers.** Storing the app, opening it with the server stopped, the update message and the offline file from `file://` were tested in headless Chrome. Installing, and offline use in Safari and Firefox, still have to be tried by hand once the app is on GitHub Pages.
 - **Pasting the report.** The `.docx` opens in macOS Quick Look and `textutil`; it still has to be opened in Word and Google Docs, and the copied sections and images pasted into both, by hand.
 - **Test data in development.** Tests and local development use `data/`, which is not in the repository. Automated tests that need FITS files should use small synthetic files generated by the test code, so the repository stays free of data.
 - **Distance of M57** for task 13: the value given in the task text (about 790 pc / 2600 ly from Gaia) should be checked before use.

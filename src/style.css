@@ -601,7 +601,7 @@ form.report-text-form { display: flex; flex-direction: column; align-items: flex
 .report-doc .item-tools textarea { background: #fff; color: #000; border-color: #b8c2d6; }
 
 @media print {
-  .topbar, .footer, .viewer-panel, .no-print { display: none !important; }
+  .update-bar, .topbar, .footer, .viewer-panel, .no-print { display: none !important; }
   html, body { background: #fff; }
   .layout, .layout.report-mode { display: block; padding: 0; max-width: none; }
   .step-panel { border: none; padding: 0; background: none; }
@@ -612,3 +612,20 @@ form.report-text-form { display: flex; flex-direction: column; align-items: flex
   .report-doc figure, .report-doc table { break-inside: avoid; }
   .report-doc h1, .report-doc h2, .report-doc h3 { break-after: avoid; }
 }
+
+/* Update message and About page */
+
+.update-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem 0.8rem;
+  padding: 0.5rem 1rem;
+  background: var(--accent-soft);
+  border-bottom: 1px solid var(--accent);
+}
+.update-bar[hidden] { display: none; }
+.about-page ul { margin: 0; padding-left: 1.3rem; display: flex; flex-direction: column; gap: 0.3rem; }
+.about-intro p { margin: 0 0 0.5rem; }
+.about-page a { color: var(--accent); overflow-wrap: anywhere; }

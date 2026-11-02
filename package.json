@@ -1,22 +1,28 @@
 {
   "name": "astrofoto",
-  "version": "0.7.0",
+  "version": "0.8.0",
+  "license": "Apache-2.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json && vite build",
+    "build:offline": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json && vite build --mode offline",
     "preview": "vite preview",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json"
   },
   "dependencies": {
     "fflate": "^0.8.3",
     "marked": "^18.1.2"
   },
   "devDependencies": {
+    "@types/node": "^22.20.5",
     "typescript": "^7.0.2",
     "vite": "^8.3.5",
-    "vitest": "^5.0.5"
+    "vite-plugin-pwa": "^2.0.0",
+    "vite-plugin-singlefile": "^2.3.4",
+    "vitest": "^5.0.5",
+    "workbox-window": "^7.4.1"
   }
 }

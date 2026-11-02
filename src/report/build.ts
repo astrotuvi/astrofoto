@@ -6,6 +6,7 @@ import { taskContent } from '../content';
 import { fmt, getLang, type Key, t } from '../i18n';
 import { term } from '../i18n/glossary';
 import { darkScale } from '../masters';
+import { projectTitle } from '../project';
 import { referenceFrame } from '../stack';
 import { masterId, state } from '../state';
 import { stats, values } from '../stats';
@@ -155,7 +156,7 @@ class Builder {
   }
 
   title(): Block[] {
-    const out: Block[] = [{ type: 'heading', level: 1, text: reportTitle() }];
+    const out: Block[] = [{ type: 'heading', level: 1, text: projectTitle() }];
     if (state.info.student) out.push(field('report.author', state.info.student));
     out.push(field('report.date', formatDate(new Date().toISOString())));
     return out;
@@ -358,13 +359,6 @@ const STEP_LABEL: Record<string, Key> = {
   align: 'align.step', stack: 'align.stack', color: 'step.color',
 };
 
-/** The project title, else one made from the object name. */
-export function reportTitle(): string {
-  if (state.info.title) return state.info.title;
-  const object = String(state.framesOf('light')[0]?.meta.header.OBJECT ?? '').trim();
-  return object ? t('report.titleFor', { object }) : t('report.defaultTitle');
-}
-
 /** The report in the current language, with the sections that are switched on. */
 export function buildReport(): ReportDoc {
   const b = new Builder(new MeasureContext());
@@ -374,5 +368,5 @@ export function buildReport(): ReportDoc {
     const blocks = b[id]();
     if (blocks.length) sections.push({ id, blocks });
   }
-  return { title: reportTitle(), author: state.info.student, lang: getLang(), sections };
+  return { title: projectTitle(), author: state.info.student, lang: getLang(), sections };
 }

@@ -56,7 +56,7 @@ describe('report', () => {
     await load();
     state.setInfo({ title: '', student: 'Mari' });
     const doc = buildReport();
-    expect(doc.title).toBe('Värvifoto: M57');
+    expect(doc.title).toBe('Minu projekt');
     expect(doc.sections.map((s) => s.id)).toEqual(['title', 'data', 'processing']);
     expect(texts(blocks('title'))).toContain('Autor: Mari');
 

@@ -5,7 +5,9 @@ import { h } from './dom';
 import { getLang, type Key, type Lang, onLangChange, setLang, t } from './i18n';
 import './masters';
 import { isMentor, setMentor } from './mentor';
+import { onPwaChange, reloadToUpdate, startPwa, updateWaiting } from './pwa';
 import { state } from './state';
+import { AboutPage } from './ui/about';
 import { AlignStep } from './ui/align';
 import { CalibrationStep } from './ui/calibrate';
 import { ColorStep } from './ui/color';
@@ -17,7 +19,7 @@ import { ViewerPanel } from './ui/viewerpanel';
 
 declare const __APP_VERSION__: string;
 
-type Step = 'resume' | 'files' | 'calibration' | 'align' | 'color' | 'report';
+type Step = 'resume' | 'files' | 'calibration' | 'align' | 'color' | 'report' | 'about';
 const STEPS: { id: Step; label: Key; ready: boolean }[] = [
   { id: 'files', label: 'step.files', ready: true },
   { id: 'calibration', label: 'step.calibration', ready: true },
@@ -39,12 +41,16 @@ const calibration = new CalibrationStep(viewer, () => go('align'));
 const align = new AlignStep(viewer, () => go('color'));
 const color = new ColorStep(viewer);
 const report = new ReportPage();
+const about = new AboutPage();
 const top = h('header', { class: 'topbar' });
+const updateBar = h('div', { class: 'update-bar', role: 'status', hidden: true });
 const footer = h('footer', { class: 'footer' });
 const stepArea = h('div', { class: 'step-area' });
 const layout = h('main', { class: 'layout' }, stepArea, viewer.element);
 let current: Step = 'files';
 let resumeWarning: string | undefined;
+/** "Later" hides the update message until the page is opened again. */
+let updateLater = false;
 
 function available(s: (typeof STEPS)[number]): boolean {
   // The mentor can open any step once there are frames
@@ -62,9 +68,9 @@ function lockedTip(s: (typeof STEPS)[number]): string {
 
 function show(): void {
   if (current === 'resume') stepArea.replaceChildren(renderResume(open, resumeWarning));
-  else stepArea.replaceChildren({ files, calibration, align, color, report }[current].element);
-  // The report page uses the whole width; its figures are drawn from the images, not the viewer
-  layout.classList.toggle('report-mode', current === 'report');
+  else stepArea.replaceChildren({ files, calibration, align, color, report, about }[current].element);
+  // The report and About pages use the whole width; the report's figures are drawn from the images, not the viewer
+  layout.classList.toggle('report-mode', current === 'report' || current === 'about');
 }
 
 function go(step: Step): void {
@@ -73,6 +79,7 @@ function go(step: Step): void {
   align.setActive(step === 'align');
   color.setActive(step === 'color');
   report.setActive(step === 'report');
+  about.setActive(step === 'about');
   show();
   renderChrome();
   window.scrollTo({ top: 0 });
@@ -127,6 +134,7 @@ function renderChrome(): void {
   );
   footer.replaceChildren(
     h('span', {}, t('app.footer', { version: __APP_VERSION__ })),
+    h('button', { type: 'button', class: 'link', 'aria-current': current === 'about' ? 'page' : undefined, onclick: () => go('about') }, t('about.link')),
     h('label', { class: 'inline mentor-switch', title: t('mentor.tip') },
       h('input', {
         type: 'checkbox',
@@ -151,12 +159,32 @@ state.on((kind) => {
   }
   if (kind === 'info') document.title = (state.info.title ? state.info.title + ' – ' : '') + t('app.title');
   if (kind === 'mentor') rerender();
+  if (!updateBar.hidden && kind !== 'overlay') renderUpdate();
 });
+
+/** The "new version" message (§6.3). The app never reloads by itself. */
+function renderUpdate(): void {
+  updateBar.hidden = !updateWaiting() || updateLater;
+  if (updateBar.hidden) return;
+  updateBar.replaceChildren(
+    h('span', {}, t('update.available'), state.dirty && state.frames.length ? ' ' + t('update.saveFirst') : ''),
+    h('button', { type: 'button', class: 'primary small', onclick: reloadToUpdate }, t('update.reload')),
+    h('button', {
+      type: 'button',
+      class: 'small',
+      onclick: () => {
+        updateLater = true;
+        renderUpdate();
+      },
+    }, t('update.later')));
+}
 
 document.documentElement.lang = getLang();
 renderChrome();
 show();
-document.getElementById('app')!.replaceChildren(top, layout, footer);
+document.getElementById('app')!.replaceChildren(updateBar, top, layout, footer);
+onPwaChange(renderUpdate);
+startPwa();
 
 /** Rebuilds everything shown, e.g. after a language change or switching mentor mode. */
 function rerender(): void {
@@ -167,8 +195,10 @@ function rerender(): void {
   if (current === 'align') align.render();
   if (current === 'color') color.render();
   if (current === 'report') report.render();
+  if (current === 'about') about.render();
   if (current === 'resume') show();
   viewer.render();
+  renderUpdate();
 }
 
 onLangChange(rerender);

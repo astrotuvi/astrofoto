@@ -6,6 +6,7 @@
 
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import { readFits } from './fits';
+import { t } from './i18n';
 import { describeFrame } from './instrument/profile';
 import { type Answer, type Frame, type LogEntry, type ProjectInfo, type StepState, defaultSettings, state } from './state';
 import type { Composition, FrameMeta, InstrumentProfile, MentorComment, ProcessingSettings, ReportSettings, StepId, Version } from './types';
@@ -167,8 +168,12 @@ export function open(bytes: Uint8Array): OpenResult {
   return compareVersions(json.appVersion, __APP_VERSION__) > 0 ? { newerApp: json.appVersion } : {};
 }
 
+/** The project title, or a generic one ("Minu projekt") when the student has not given one. */
+export function projectTitle(): string {
+  return state.info.title || t('project.defaultTitle');
+}
+
 export function suggestedName(): string {
-  const base = (state.info.title || state.frames.find((f) => f.meta.kind === 'light')?.meta.header.OBJECT || 'astrofoto')
-    .toString().trim().replace(/[\\/:*?"<>|]+/g, '-');
+  const base = projectTitle().trim().replace(/[\\/:*?"<>|]+/g, '-');
   return base + PROJECT_EXT;
 }
