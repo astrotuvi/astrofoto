@@ -11,6 +11,8 @@ export interface ViewImage {
   data: Float32Array;
   /** True when file row 0 is the bottom of the image (the FITS default). */
   flipY: boolean;
+  /** A colour image (RGBA bytes in file row order), shown as it is instead of `data`. */
+  rgba?: Uint8ClampedArray;
 }
 
 /** A circle drawn on the image, e.g. a clicked star; 0-based file coordinates. */
@@ -183,6 +185,15 @@ export class Viewer {
     const bctx = this.bitmap.getContext('2d')!;
     const out = bctx.createImageData(img.width, img.height);
     const px = out.data;
+    if (img.rgba) {
+      const row = img.width * 4;
+      for (let y = 0; y < img.height; y++) {
+        const src = (img.flipY ? img.height - 1 - y : y) * row;
+        px.set(img.rgba.subarray(src, src + row), y * row);
+      }
+      bctx.putImageData(out, 0, 0);
+      return;
+    }
     const range = this.white - this.black || 1;
     for (let y = 0; y < img.height; y++) {
       const srcRow = (img.flipY ? img.height - 1 - y : y) * img.width;

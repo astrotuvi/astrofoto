@@ -2,7 +2,7 @@
 
 import type { FitsImage } from './fits';
 import type { AutoResult } from './align';
-import type { CombineMethod, FrameMeta, InstrumentProfile, Kind, ProcessingSettings, Region, StepId } from './types';
+import type { CombineMethod, Composition, FrameMeta, InstrumentProfile, Kind, ProcessingSettings, Region, StepId } from './types';
 
 export interface Frame {
   meta: FrameMeta;
@@ -67,7 +67,7 @@ export interface Answer {
 }
 
 export type ChangeKind = 'frames' | 'selection' | 'profile' | 'settings' | 'masters' | 'calibrated' | 'aligned' | 'stacks'
-  | 'auto' | 'steps' | 'answers' | 'overlay' | 'info' | 'log' | 'saved';
+  | 'auto' | 'compositions' | 'steps' | 'answers' | 'overlay' | 'info' | 'log' | 'saved';
 
 /** Changes that do not need saving. */
 const TRANSIENT = new Set<ChangeKind>(['selection', 'overlay', 'saved', 'masters', 'calibrated', 'aligned', 'stacks', 'auto']);
@@ -106,6 +106,8 @@ class State {
   stacks = new Map<string, Stack>();
   /** The app's own alignment of each light (null = it found no match), for comparison. */
   auto = new Map<string, AutoResult | null>();
+  /** Colour images made from the stacks. */
+  compositions: Composition[] = [];
   info: ProjectInfo = newInfo();
   log: LogEntry[] = [];
   /** Changed since the last save. */
@@ -141,7 +143,8 @@ class State {
 
   /**
    * The image shown for an id: a frame, a master ('master:…'), a calibrated light ('cal:<frame id>'),
-   * an aligned light ('aligned:<frame id>') or a stack ('stack:<filter>').
+   * an aligned light ('aligned:<frame id>') or a stack ('stack:<filter>'). Colour images
+   * ('color:<composition id>') are not single images; see composition().
    */
   viewable(id: string | null): { title: string; image: FitsImage; isMaster: boolean } | undefined {
     if (!id) return undefined;
@@ -154,6 +157,35 @@ class State {
     if (id.includes(':')) return undefined;
     const f = this.frame(id);
     return f ? { title: f.meta.fileName, image: f.image, isMaster: false } : undefined;
+  }
+
+  composition(id: string | null): Composition | undefined {
+    return id?.startsWith('color:') ? this.compositions.find((c) => c.id === id.slice(6)) : undefined;
+  }
+
+  addComposition(c: Composition): void {
+    this.compositions.push(c);
+    this.emit('compositions');
+  }
+
+  updateComposition(id: string, patch: Partial<Composition>): void {
+    const c = this.compositions.find((x) => x.id === id);
+    if (!c) return;
+    Object.assign(c, patch);
+    this.emit('compositions');
+  }
+
+  removeComposition(id: string): void {
+    this.compositions = this.compositions.filter((c) => c.id !== id);
+    if (this.selectedId === `color:${id}`) this.select(null);
+    this.emit('compositions');
+  }
+
+  /** An id for a new composition. */
+  newCompositionId(): string {
+    let n = 1;
+    while (this.compositions.some((c) => c.id === `c${n}`)) n++;
+    return `c${n}`;
   }
 
   addFrames(frames: Frame[]): void {
@@ -181,12 +213,13 @@ class State {
     this.alignCrop = null;
     this.stacks.clear();
     this.auto.clear();
+    this.compositions = [];
     this.info = newInfo();
     this.log = [];
     this.trimPreview = null;
     this.nextId = 1;
     this.select(null);
-    for (const k of ['frames', 'profile', 'settings', 'masters', 'calibrated', 'aligned', 'stacks', 'auto', 'steps', 'answers', 'info', 'log'] as const) this.emit(k);
+    for (const k of ['frames', 'profile', 'settings', 'masters', 'calibrated', 'aligned', 'stacks', 'auto', 'compositions', 'steps', 'answers', 'info', 'log'] as const) this.emit(k);
     this.markSaved();
   }
 

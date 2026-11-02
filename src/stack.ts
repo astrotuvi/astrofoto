@@ -19,6 +19,11 @@ export function stackId(filter: string): string {
   return `stack:${filter}`;
 }
 
+/** The stacked image of a filter, if there is one. */
+export function stackImage(filter: string | null): FitsImage | undefined {
+  return filter === null ? undefined : state.stacks.get(stackId(filter))?.image;
+}
+
 /** Included light frames, earliest first. */
 export function lightsByTime(): Frame[] {
   return state.framesOf('light').slice().sort((a, b) =>

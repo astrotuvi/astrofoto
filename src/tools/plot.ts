@@ -12,14 +12,16 @@ export interface PlotOptions {
   markers?: { x: number; color: string }[];
   /** Integer x ticks (pixel positions). */
   integerX?: boolean;
+  /** CSS pixels; the canvas must be created with the same height. */
+  height?: number;
 }
 
-const HEIGHT = 220;
+const DEFAULT_HEIGHT = 220;
 
-export function createPlotCanvas(): HTMLCanvasElement {
+export function createPlotCanvas(height = DEFAULT_HEIGHT): HTMLCanvasElement {
   const c = document.createElement('canvas');
   c.className = 'plot';
-  c.style.height = `${HEIGHT}px`;
+  c.style.height = `${height}px`;
   return c;
 }
 
@@ -43,8 +45,9 @@ function tickDigits(values: number[]): number {
 export function drawPlot(canvas: HTMLCanvasElement, xs: ArrayLike<number>, ys: ArrayLike<number>, opt: PlotOptions): void {
   const dpr = window.devicePixelRatio || 1;
   const cssWidth = canvas.clientWidth || 400;
+  const plotHeight = opt.height ?? DEFAULT_HEIGHT;
   canvas.width = Math.round(cssWidth * dpr);
-  canvas.height = Math.round(HEIGHT * dpr);
+  canvas.height = Math.round(plotHeight * dpr);
   const ctx = canvas.getContext('2d')!;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
@@ -52,7 +55,7 @@ export function drawPlot(canvas: HTMLCanvasElement, xs: ArrayLike<number>, ys: A
   const fg = style.getPropertyValue('--text').trim() || '#222';
   const muted = style.getPropertyValue('--border').trim() || '#ccc';
   const line = style.getPropertyValue('--accent').trim() || '#1565c0';
-  ctx.clearRect(0, 0, cssWidth, HEIGHT);
+  ctx.clearRect(0, 0, cssWidth, plotHeight);
   ctx.font = '11px system-ui, sans-serif';
 
   const n = xs.length;
@@ -77,7 +80,7 @@ export function drawPlot(canvas: HTMLCanvasElement, xs: ArrayLike<number>, ys: A
 
   const left = 64, right = 12, top = 10, bottom = 40;
   const w = cssWidth - left - right;
-  const h = HEIGHT - top - bottom;
+  const h = plotHeight - top - bottom;
   const px = (x: number) => left + ((x - xMin) / (xMax - xMin || 1)) * w;
   const py = (y: number) => top + h - ((ty(y) - lo) / (hi - lo || 1)) * h;
 
@@ -113,7 +116,7 @@ export function drawPlot(canvas: HTMLCanvasElement, xs: ArrayLike<number>, ys: A
   // Axis labels
   ctx.textAlign = 'center';
   ctx.textBaseline = 'bottom';
-  ctx.fillText(opt.xLabel, left + w / 2, HEIGHT - 2);
+  ctx.fillText(opt.xLabel, left + w / 2, plotHeight - 2);
   ctx.save();
   ctx.translate(12, top + h / 2);
   ctx.rotate(-Math.PI / 2);

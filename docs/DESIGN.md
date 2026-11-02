@@ -2,7 +2,7 @@
 
 A browser app for reducing monochrome CCD images in FITS format and combining them into colour images. It is built as a learning tool for an after-school astronomy project.
 
-Status: milestones 1–4 (viewer, master frames, calibration and project file, alignment and stacking) implemented. Last updated 2026-11-02.
+Status: milestones 1–5 (viewer, master frames, calibration and project file, alignment and stacking, colour and export) implemented. Last updated 2026-11-02.
 
 ---
 
@@ -84,7 +84,7 @@ In this document, pixel coordinates are **1-based**, the convention used by FITS
 | `R` (Johnson) and `r` (Sloan) are different filters. | Filter names are **case-sensitive** and never changed. Bias and dark frames ignore `FILTER`. |
 | The same bright stars appear in all 18 lights. The drift is up to about 4.2 px (V frames), with no rotation (< 0.03°). It wanders rather than growing steadily: the last frame is 2.3 px from the first. Only 4–6 stars stand out in g and B; the bright knots of M57 look like stars to a simple peak finder. | Alignment corrects **shift only**, measured to a fraction of a pixel (scatter 0.05–0.2 px). Star finding rejects peaks that do not stand out at least 5× the scatter of the ring around them. |
 | There are 3 lights per filter. | **Median** stacking is the default: it removes cosmic rays. Sigma clipping is pointless with 3 frames. |
-| The sky background differs by filter, roughly 600–1300 ADU above bias. | An automatic black point for each channel, taken from the background median. |
+| The sky background differs by filter, roughly 560–1300 ADU above bias in the stacks (B lowest), with a noise of 20–31 ADU. The brightest stacked pixel ranges from about 14 000 ADU (B) to 59 000 ADU (r). | An automatic black point for each channel: the background median, which makes the sky equally dark in every channel. The white points differ by channel, so the colour balance is set per channel. |
 | The brightest star peaks at about 62 000 ADU raw in r and i. | A saturation overlay, with an adjustable level (default 60 000 ADU raw). |
 | Plate scale 206 265 × 0.026 / 12 000 ≈ 0.45″/px, so the field is about 3.8′. | Measuring tools can show arcseconds, computed from header values. |
 
@@ -225,18 +225,25 @@ In the app the step has three parts: **Käsitsi** (by hand: reference, model, cl
 
 ### 3.4 Colour
 
-- One or more **compositions**, each mapping stacked filter images to the R, G and B channels.
-- Settings for each channel: black point (the "Auto" button sets it from the background median), white point, weight (colour balance).
-- Stretch: linear or asinh, with a strength setting.
-- The image updates live as settings change.
-- The histogram of each channel is shown.
+- One or more **compositions**, each mapping stacked filter images to the R, G and B channels. The student chooses the filters; the table of stacks shows each filter's wavelength, and a check says whether the mapping goes from short (blue) to long (red) wavelength, is reversed, mixed ("false colour") or unknown. The same filter may go into two channels.
+- Settings for each channel: black point (the "Auto" button sets it to the background median), white point, weight (colour balance). A newly chosen filter starts at the full range of its stack (minimum to maximum), so the linear image looks nearly black, as in §4.2.
+- Channel brightness = stretch(weight × (value − black) / (white − black)), clipped to 0–1.
+- Stretch: linear or asinh, `asinh(t·x) / asinh(t)` with strength t (1–1000, default 100), applied to each channel separately.
+- The image updates live as settings change: sliders change the image and the histograms without rebuilding the panel. The white point slider is logarithmic above the background, so faint and bright settings both fit.
+- The histogram of each channel is shown, around the background, with the black and white points.
+- **Check:** the background brightness of each channel on the 0–255 scale. It should be equal (neutral sky); otherwise the app names the tint and points to "Auto" and the weights.
+- The colour image is shown in the viewer, where the pixel readout gives the stack value behind each channel. It has no display range or measuring tabs of its own.
+- In the app the step has two parts: **Värvipilt** (colour image) and **Failide salvestamine** (saving files, §3.5).
+
+For the reference data, BVR shows the ring of M57 red outside and blue-green inside; in gri the ring is green, because Hα falls into r, which is in the green channel. Task 14 builds on this difference.
 
 ### 3.5 Export
 
-- **PNG** of the colour image, at 1× or 2× size. 2× is meant for posters.
-- **FITS**: master frames and stacked images per filter, as 32-bit floats.
+- **PNG** of the colour image, at 1× or 2× size, the right way up (`ROWORDER`). 2× is smoothed rather than blocky and is meant for posters. Saving the PNG marks the colour step as done.
+- **FITS**: master frames and stacked images per filter, as 32-bit floats, one at a time or all in one zip.
   - `CHECKSUM` and `DATASUM` are removed, because the data has changed.
-  - The processing log is written as `HISTORY` lines.
+  - The processing steps are written as `HISTORY` lines (trim, masters, calibration, alignment, crop, stacking), followed by the app version and date.
+  - File names are `master-bias.fits`, `master-flat-<filter>.fits`, `stack-<filter>.fits`. Filters that differ only by case (R and r) get their system added (`stack-R-johnson-cousins.fits`, `stack-r-sloan.fits`), because Windows and macOS file names ignore case.
 - **Figures**: profiles, histograms and comparisons as PNG files with axis labels.
 - **Report** (§4.6): `.docx` for Google Docs or Word, copying section by section, a zip of figures, and PDF through printing.
 
@@ -317,6 +324,7 @@ Planned tasks for the reference dataset:
 | 11 | Stars | Measure the FWHM of a star in px and ″ (seeing). | to be measured |
 | 12 | Saturation | Find saturated or nearly saturated stars. Why can their brightness not be measured? | r, i |
 | 13 | Object | Measure the object's size in ″ (for M57: the ring diameter). Convert it to light years, using the distance the mentor has set. | to be measured |
+| 14a | Colour | Which channel does the filter with the shortest wavelength go into, and why? | blue |
 | 14 | Colour (extension) | Compare a star's brightness in B and V, which introduces the colour index B−V. Why do the BVR and gri images differ? | discussion |
 
 Task definitions are stored in separate files (§6), so the mentor can add or change them.
@@ -632,7 +640,9 @@ src/
                        shift/rotation fit, bilinear transform, common crop
   stack.ts             reference frame, manual and automatic transforms, aligned frames,
                        common crop and stacks per filter, built from the state
-  color.ts             channel mapping, black/white point, stretch → RGBA
+  color.ts             channel mapping, black/white point, stretch → RGBA, background check,
+                       wavelength order
+  export.ts            FITS files of masters and stacks (names, zip), PNG of a colour image
   viewer.ts            canvas display, zoom/pan, overlays, click handling
   project.ts           .astroproj format: serialize, open, migrate
   fileio.ts            File System Access with download / <input> fallback

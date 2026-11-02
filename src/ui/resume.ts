@@ -9,9 +9,11 @@ import { isSolved, TASKS, unmet } from '../tasks';
 import { MeasureContext } from '../tasks/context';
 import type { StepId } from '../types';
 
-export type Target = { step: 'files' } | { step: 'calibration'; sub: CalSub } | { step: 'align'; sub: AlignSub };
+export type Target = { step: 'files' } | { step: 'calibration'; sub: CalSub } | { step: 'align'; sub: AlignSub }
+  | { step: 'color'; sub: ColorSub };
 export type CalSub = 'trim' | 'bias' | 'dark' | 'flat' | 'apply';
 export type AlignSub = 'manual' | 'auto' | 'stack';
+export type ColorSub = 'compose' | 'export';
 
 /** Work steps in order, with where each one is opened. */
 const WORK: { id: StepId; label: Key; target: Target }[] = [
@@ -23,6 +25,7 @@ const WORK: { id: StepId; label: Key; target: Target }[] = [
   { id: 'calibrate', label: 'cal.apply', target: { step: 'calibration', sub: 'apply' } },
   { id: 'align', label: 'align.step', target: { step: 'align', sub: 'manual' } },
   { id: 'stack', label: 'align.stack', target: { step: 'align', sub: 'stack' } },
+  { id: 'color', label: 'step.color', target: { step: 'color', sub: 'compose' } },
 ];
 
 function stepDone(id: StepId): boolean {

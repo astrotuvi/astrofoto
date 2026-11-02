@@ -1,14 +1,14 @@
 // Saving and opening .astroproj project files. See docs/DESIGN.md §6.5.
 //
 // An .astroproj file is a zip: project.json (settings, decisions, answers, log) and
-// frames/<file name> (the raw files as loaded, unchanged). Masters and calibrated frames are
-// not stored; they are recomputed on open.
+// frames/<file name> (the raw files as loaded, unchanged). Masters, calibrated frames and stacks
+// are not stored; they are recomputed on open.
 
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import { readFits } from './fits';
 import { describeFrame } from './instrument/profile';
 import { type Answer, type Frame, type LogEntry, type ProjectInfo, type StepState, defaultSettings, state } from './state';
-import type { FrameMeta, InstrumentProfile, ProcessingSettings, StepId } from './types';
+import type { Composition, FrameMeta, InstrumentProfile, ProcessingSettings, StepId } from './types';
 
 declare const __APP_VERSION__: string;
 
@@ -24,6 +24,7 @@ interface ProjectJson {
   profile: InstrumentProfile | null;
   frames: SavedFrame[];
   settings: ProcessingSettings;
+  compositions: Composition[];
   steps: Partial<Record<StepId, StepState>>;
   answers: Record<string, Answer>;
   hintsUsed: Record<string, number>;
@@ -66,6 +67,7 @@ export function serialize(): Uint8Array {
       return rest;
     }),
     settings: state.settings,
+    compositions: state.compositions,
     steps: state.steps,
     answers: state.answers,
     hintsUsed: state.hintsUsed,
@@ -96,6 +98,8 @@ function migrate(json: ProjectJson): ProjectJson {
       // Projects from 0.3 have no stacking method yet
       combine: { ...defaultSettings().combine, ...json.settings.combine },
     },
+    // Projects from 0.4 and earlier have no colour images
+    compositions: json.compositions ?? [],
     hintsUsed: json.hintsUsed ?? {},
     log: json.log ?? [],
     steps: json.steps ?? {},
@@ -135,13 +139,14 @@ export function open(bytes: Uint8Array): OpenResult {
   state.info = { ...json.info };
   if (json.profile) state.setProfile(json.profile);
   state.settings = json.settings;
+  state.compositions = json.compositions;
   state.steps = json.steps;
   state.answers = json.answers;
   state.hintsUsed = json.hintsUsed;
   state.log = json.log;
   // Adding the frames rebuilds the masters and calibrated frames (see masters.ts)
   state.addFrames(frames);
-  for (const k of ['info', 'settings', 'steps', 'answers', 'log'] as const) state.emit(k);
+  for (const k of ['info', 'settings', 'compositions', 'steps', 'answers', 'log'] as const) state.emit(k);
   state.markSaved();
 
   return compareVersions(json.appVersion, __APP_VERSION__) > 0 ? { newerApp: json.appVersion } : {};

@@ -50,7 +50,7 @@ export class AlignStep {
   private error: string | null = null;
   private message: string | null = null;
 
-  constructor(private viewer: ViewerPanel) {
+  constructor(private viewer: ViewerPanel, private toColor: () => void) {
     state.on((kind) => {
       if (!this.active) return;
       if (kind === 'steps' || kind === 'settings' || kind === 'frames' || kind === 'calibrated' || kind === 'aligned'
@@ -482,7 +482,9 @@ export class AlignStep {
             h('td', {}, h('button', { type: 'button', onclick: () => this.viewer.show(s.id, { tab: 'box' }), title: stackTitle(s.id) }, t('cal.show'))))))),
         h('p', { class: 'hint' }, t('stack.check'))) : null,
       renderTasks(tasksFor('stack')),
-      done ? h('p', { class: 'ok next' }, t('stack.allDone')) : null,
+      done && state.stacks.size ? h('div', { class: 'next' },
+        h('span', { class: 'ok' }, t('stack.allDone')),
+        h('button', { type: 'button', class: 'primary', onclick: () => this.toColor() }, t('cal.next', { what: t('step.color') }))) : null,
     );
   }
 }

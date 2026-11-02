@@ -7,6 +7,7 @@ import './masters';
 import { state } from './state';
 import { AlignStep } from './ui/align';
 import { CalibrationStep } from './ui/calibrate';
+import { ColorStep } from './ui/color';
 import { FilesStep } from './ui/files';
 import { ProjectBar } from './ui/projectbar';
 import { renderResume, type Target } from './ui/resume';
@@ -19,7 +20,7 @@ const STEPS: { id: Step; label: Key; ready: boolean }[] = [
   { id: 'files', label: 'step.files', ready: true },
   { id: 'calibration', label: 'step.calibration', ready: true },
   { id: 'align', label: 'step.align', ready: true },
-  { id: 'color', label: 'step.color', ready: false },
+  { id: 'color', label: 'step.color', ready: true },
 ];
 
 const viewer = new ViewerPanel();
@@ -32,7 +33,8 @@ const projectBar = new ProjectBar(
 );
 const files = new FilesStep((file) => void projectBar.openFile(file));
 const calibration = new CalibrationStep(viewer, () => go('align'));
-const align = new AlignStep(viewer);
+const align = new AlignStep(viewer, () => go('color'));
+const color = new ColorStep(viewer);
 const top = h('header', { class: 'topbar' });
 const footer = h('footer', { class: 'footer' });
 const stepArea = h('div', { class: 'step-area' });
@@ -41,23 +43,26 @@ let resumeWarning: string | undefined;
 
 function available(s: (typeof STEPS)[number]): boolean {
   if (s.id === 'align') return state.isDone('calibrate') && state.calibrated.size > 0;
+  if (s.id === 'color') return state.isDone('stack') && state.stacks.size > 0;
   return s.ready && (s.id === 'files' || state.frames.length > 0);
 }
 
 function lockedTip(s: (typeof STEPS)[number]): string {
   if (!s.ready) return t('step.later');
-  return s.id === 'align' && state.frames.length ? t('step.lockedCalibration') : t('step.lockedFiles');
+  if (!state.frames.length) return t('step.lockedFiles');
+  return s.id === 'color' ? t('step.lockedStack') : t('step.lockedCalibration');
 }
 
 function show(): void {
   if (current === 'resume') stepArea.replaceChildren(renderResume(open, resumeWarning));
-  else stepArea.replaceChildren(current === 'files' ? files.element : current === 'align' ? align.element : calibration.element);
+  else stepArea.replaceChildren({ files, calibration, align, color }[current].element);
 }
 
 function go(step: Step): void {
   current = step;
   calibration.setActive(step === 'calibration');
   align.setActive(step === 'align');
+  color.setActive(step === 'color');
   show();
   renderChrome();
   window.scrollTo({ top: 0 });
@@ -66,6 +71,7 @@ function go(step: Step): void {
 function open(target: Target): void {
   if (target.step === 'calibration') calibration.open(target.sub);
   if (target.step === 'align') align.open(target.sub);
+  if (target.step === 'color') color.open(target.sub);
   go(target.step);
 }
 
@@ -112,8 +118,8 @@ function renderChrome(): void {
 }
 
 state.on((kind) => {
-  // The align step unlocks when calibration is done
-  if (kind === 'steps' || kind === 'calibrated') renderChrome();
+  // The align step unlocks when calibration is done, the colour step when the stacks are made
+  if (kind === 'steps' || kind === 'calibrated' || kind === 'stacks') renderChrome();
   if (kind === 'frames') {
     if (state.frames.length === 0 && current !== 'files') go('files');
     else renderChrome();
@@ -136,6 +142,7 @@ onLangChange(() => {
   files.render();
   if (current === 'calibration') calibration.render();
   if (current === 'align') align.render();
+  if (current === 'color') color.render();
   if (current === 'resume') show();
   viewer.render();
 });

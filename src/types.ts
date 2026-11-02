@@ -80,3 +80,29 @@ export interface ProcessingSettings {
   /** Stars clicked by the student per light frame, in raw 0-based coordinates; star k matches star k of the reference. */
   manualStars: Record<string, [number, number][]>;
 }
+
+export type Channel = 'R' | 'G' | 'B';
+
+export interface ChannelSettings {
+  /** Filter whose stack goes into this channel; null = channel left dark. */
+  filter: string | null;
+  /** Stack values (ADU) shown as black and as full brightness. */
+  black: number;
+  white: number;
+  /** Multiplies the channel after scaling; sets the colour balance. */
+  weight: number;
+}
+
+export interface Stretch {
+  type: 'linear' | 'asinh';
+  /** asinh only: larger values brighten faint parts more. */
+  strength: number;
+}
+
+/** A colour image made of stacked filter images. */
+export interface Composition {
+  id: string;
+  name: string;
+  channels: Record<Channel, ChannelSettings>;
+  stretch: Stretch;
+}

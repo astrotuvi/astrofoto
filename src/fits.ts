@@ -285,3 +285,8 @@ function formatNumber(x: number): string {
   const s = String(x);
   return s.includes('.') || s.includes('e') ? s.toUpperCase() : s + '.';
 }
+
+/** True when the first row in the file is the bottom of the image (the FITS default; ROWORDER says otherwise). */
+export function bottomUp(img: FitsImage): boolean {
+  return String(img.header.ROWORDER ?? '').trim().toUpperCase() !== 'TOP-DOWN';
+}

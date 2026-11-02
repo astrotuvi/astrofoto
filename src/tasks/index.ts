@@ -170,6 +170,31 @@ export const TASKS: Task[] = [
       { id: 'why', label: { et: 'Miks?', en: 'Why?' }, type: 'text' },
     ],
   },
+  {
+    id: 'color-mapping',
+    step: 'color',
+    parts: [
+      {
+        id: 'channel', label: { et: 'Lühima lainepikkusega filter läheb kanalisse', en: 'The filter with the shortest wavelength goes into the channel' }, type: 'choice',
+        options: [
+          { id: 'R', label: { et: 'punane', en: 'red' } },
+          { id: 'G', label: { et: 'roheline', en: 'green' } },
+          { id: 'B', label: { et: 'sinine', en: 'blue' } },
+        ],
+        correct: 'B',
+      },
+      { id: 'why', label: { et: 'Miks?', en: 'Why?' }, type: 'text' },
+    ],
+  },
+  {
+    id: 'color-compare',
+    step: 'color',
+    params: (c) => c.colorFilters,
+    parts: [
+      { id: 'stars', label: { et: 'Kumb täht on sinises filtris suhteliselt heledam ja mida see ütleb temperatuuri kohta?', en: 'Which star is relatively brighter in the blue filter, and what does it tell about the temperature?' }, type: 'text' },
+      { id: 'sets', label: { et: 'Miks erinevad kahe filtrikomplekti värvipildid?', en: 'Why do the colour images of two filter sets differ?' }, type: 'text' },
+    ],
+  },
 ];
 
 export function tasksFor(step: StepId): Task[] {

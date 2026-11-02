@@ -1,7 +1,7 @@
 // Values computed from the student's own data, used to check task answers.
 
 import { clippedMean, DEFAULT_SIGMA, trimPlane } from '../calibrate';
-import { headerValue, pixelScale } from '../instrument/profile';
+import { filterInfo, headerValue, pixelScale } from '../instrument/profile';
 import { applyInverse } from '../align';
 import { suggestedTrim } from '../masters';
 import { centre, lightsByTime, referenceFrame, runAuto, transformOf } from '../stack';
@@ -128,6 +128,15 @@ export class MeasureContext {
       if (a[0] && a[1]) out.push(shift(a[0], a[1]));
       return out;
     });
+  }
+
+  /** Filters in the blue and green channels of the first colour image, else the two shortest wavelengths. */
+  get colorFilters(): { blue: string; green: string } {
+    const c = state.compositions.find((x) => x.channels.B.filter !== null && x.channels.G.filter !== null);
+    if (c) return { blue: c.channels.B.filter!, green: c.channels.G.filter! };
+    const nm = (f: string) => (state.profile ? filterInfo(state.profile, f)?.wavelengthNm : undefined) ?? Infinity;
+    const [blue = 'B', green = 'V'] = state.filtersOf('light').sort((a, b) => nm(a) - nm(b));
+    return { blue, green };
   }
 
   /** Median in the centre and in 32 × 32 corner boxes of the master flat. */
