@@ -51,6 +51,7 @@ export interface ProcessingSettings {
   /** undefined = not decided yet; null = no trimming. Copied from the student's decision. */
   trim?: Region | null;
   combine: { bias: CombineMethod; dark: CombineMethod; flat: CombineMethod };
+  /** Which masters are applied to the light frames; switched off for "what if" experiments. */
   useBias: boolean;
   useDark: boolean;
   useFlat: boolean;

@@ -61,7 +61,7 @@ export class ViewerPanel {
       zoom: (s) => (this.zoomLabel.textContent = `${fmt(s * 100, 0)} %`),
     });
     state.on((kind) => {
-      if (kind === 'selection' || kind === 'frames' || kind === 'masters') this.showImage();
+      if (kind === 'selection' || kind === 'frames' || kind === 'masters' || kind === 'calibrated') this.showImage();
       if (kind === 'overlay' || kind === 'settings') this.updateOverlay();
     });
     this.render();
@@ -105,6 +105,13 @@ export class ViewerPanel {
     if (state.masters.size) {
       groups.push(h('optgroup', { label: t('viewer.masters') },
         [...state.masters.keys()].map((id) => h('option', { value: id, selected: id === state.selectedId }, masterTitle(id)))));
+    }
+    if (state.calibrated.size) {
+      groups.push(h('optgroup', { label: t('viewer.calibrated') },
+        state.framesOf('light').filter((f) => state.calibrated.has(f.meta.id)).map((f) => {
+          const id = `cal:${f.meta.id}`;
+          return h('option', { value: id, selected: id === state.selectedId }, `${f.meta.filter ? f.meta.filter + ' · ' : ''}${f.meta.fileName}`);
+        })));
     }
     for (const kind of KINDS) {
       const frames = state.frames.filter((f) => f.meta.kind === kind);

@@ -6,6 +6,25 @@ import type { CombineMethod, FrameMeta, InstrumentProfile, Kind, ProcessingSetti
 export interface Frame {
   meta: FrameMeta;
   image: FitsImage;
+  /** The file as loaded (possibly gzipped), saved unchanged in the project file. */
+  raw: Uint8Array;
+}
+
+export interface LogEntry {
+  date: string;
+  step: StepId;
+  /** Message key under 'log.' in the interface strings. */
+  code: string;
+  params: Record<string, string | number>;
+}
+
+export interface ProjectInfo {
+  title: string;
+  student: string;
+  created: string;
+  /** App version that saved the project last. */
+  savedWith?: string;
+  lastSaved?: string;
 }
 
 export type MasterKind = Exclude<Kind, 'light'>;
@@ -37,7 +56,11 @@ export interface Answer {
   attempts: number;
 }
 
-export type ChangeKind = 'frames' | 'selection' | 'profile' | 'settings' | 'masters' | 'steps' | 'answers' | 'overlay';
+export type ChangeKind = 'frames' | 'selection' | 'profile' | 'settings' | 'masters' | 'calibrated' | 'steps' | 'answers'
+  | 'overlay' | 'info' | 'log' | 'saved';
+
+/** Changes that do not need saving. */
+const TRANSIENT = new Set<ChangeKind>(['selection', 'overlay', 'saved', 'masters', 'calibrated']);
 
 export function masterId(kind: MasterKind, filter = ''): string {
   return kind === 'flat' ? `master:flat:${filter}` : `master:${kind}`;
@@ -60,6 +83,12 @@ class State {
   settings: ProcessingSettings = defaultSettings();
   steps: Partial<Record<StepId, StepState>> = {};
   masters = new Map<string, Master>();
+  /** Calibrated light frames, keyed by frame id. */
+  calibrated = new Map<string, FitsImage>();
+  info: ProjectInfo = newInfo();
+  log: LogEntry[] = [];
+  /** Changed since the last save. */
+  dirty = false;
   /** Keyed by `<taskId>.<partId>`. */
   answers: Record<string, Answer> = {};
   /** Hint levels opened per task. */
@@ -89,11 +118,16 @@ class State {
     return [...new Set(this.framesOf(kind).map((f) => f.meta.filter))].sort();
   }
 
-  /** The image shown for an id: a frame or a master. */
+  /** The image shown for an id: a frame, a master ('master:…') or a calibrated light ('cal:<frame id>'). */
   viewable(id: string | null): { title: string; image: FitsImage; isMaster: boolean } | undefined {
     if (!id) return undefined;
     const m = this.masters.get(id);
     if (m) return { title: id, image: m.image, isMaster: true };
+    if (id.startsWith('cal:')) {
+      const c = this.calibrated.get(id.slice(4));
+      // Calibrated frames are trimmed like the masters
+      return c ? { title: id, image: c, isMaster: true } : undefined;
+    }
     const f = this.frame(id);
     return f ? { title: f.meta.fileName, image: f.image, isMaster: false } : undefined;
   }
@@ -118,9 +152,43 @@ class State {
     this.masters.clear();
     this.answers = {};
     this.hintsUsed = {};
+    this.calibrated.clear();
+    this.info = newInfo();
+    this.log = [];
     this.trimPreview = null;
+    this.nextId = 1;
     this.select(null);
-    for (const k of ['frames', 'profile', 'settings', 'masters', 'steps', 'answers'] as const) this.emit(k);
+    for (const k of ['frames', 'profile', 'settings', 'masters', 'calibrated', 'steps', 'answers', 'info', 'log'] as const) this.emit(k);
+    this.markSaved();
+  }
+
+  /** Makes sure new ids do not clash with ids loaded from a project. */
+  reserveIds(ids: string[]): void {
+    for (const id of ids) {
+      const n = Number(id.replace(/^f/, ''));
+      if (Number.isInteger(n) && n >= this.nextId) this.nextId = n + 1;
+    }
+  }
+
+  setInfo(patch: Partial<ProjectInfo>): void {
+    Object.assign(this.info, patch);
+    this.emit('info');
+  }
+
+  addLog(step: StepId, code: string, params: Record<string, string | number> = {}): void {
+    this.log.push({ date: new Date().toISOString(), step, code, params });
+    this.emit('log');
+  }
+
+  setCalibrated(images: Map<string, FitsImage>): void {
+    this.calibrated = images;
+    if (this.selectedId?.startsWith('cal:') && !this.viewable(this.selectedId)) this.select(null);
+    this.emit('calibrated');
+  }
+
+  markSaved(): void {
+    this.dirty = false;
+    this.emit('saved');
   }
 
   updateMeta(id: string, patch: Partial<FrameMeta>): void {
@@ -191,8 +259,9 @@ class State {
 
   /** Bytes used by pixel data (float32). */
   memoryBytes(): number {
-    let sum = this.frames.reduce((s, f) => s + f.image.data.byteLength, 0);
+    let sum = this.frames.reduce((s, f) => s + f.image.data.byteLength + f.raw.byteLength, 0);
     for (const m of this.masters.values()) sum += m.image.data.byteLength;
+    for (const c of this.calibrated.values()) sum += c.data.byteLength;
     return sum;
   }
 
@@ -201,8 +270,13 @@ class State {
   }
 
   emit(kind: ChangeKind): void {
+    if (!TRANSIENT.has(kind)) this.dirty = true;
     for (const fn of this.listeners) fn(kind);
   }
+}
+
+function newInfo(): ProjectInfo {
+  return { title: '', student: '', created: new Date().toISOString() };
 }
 
 export const state = new State();

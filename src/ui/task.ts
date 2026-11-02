@@ -5,7 +5,7 @@ import { h } from '../dom';
 import { type Key, t } from '../i18n';
 import { state } from '../state';
 import { MeasureContext } from '../tasks/context';
-import { attempts, type CheckResult, checkPart, FULL_HINT_AFTER, HINT_LEVELS, partLabel, type Task, unmet } from '../tasks';
+import { attempts, type CheckResult, checkPart, FULL_HINT_AFTER, HINT_LEVELS, isSolved, partLabel, type Task, unmet } from '../tasks';
 
 function html(content: string): HTMLDivElement {
   const div = h('div', { class: 'md' });
@@ -32,7 +32,7 @@ function renderTask(task: Task, n: number, ctx: MeasureContext): HTMLElement {
 
   const results = new Map<string, HTMLElement>();
   const inputs = new Map<string, HTMLInputElement | HTMLTextAreaElement>();
-  const allCorrect = task.parts.every((p) => p.type === 'text' ? !!state.answers[`${task.id}.${p.id}`]?.value : state.answers[`${task.id}.${p.id}`]?.correct);
+  const allCorrect = isSolved(task);
 
   const parts = task.parts.map((p) => {
     const key = `${task.id}.${p.id}`;

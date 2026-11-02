@@ -119,6 +119,23 @@ export const TASKS: Task[] = [
       { id: 'corner', label: { et: 'Kõige tumedam nurk on keskkohast tumedam', en: 'The darkest corner is darker than the centre by' }, type: 'number', unit: '%', expected: (c) => c.flatCorners?.darkestPercent, tolerance: { abs: 2.5 } },
     ],
   },
+  {
+    id: 'calibrate-background',
+    step: 'calibrate',
+    params: (c) => ({ file: c.calibrationLight?.meta.fileName ?? '' }),
+    parts: [
+      { id: 'drop', label: { et: 'Taust vähenes', en: 'The background dropped by' }, type: 'number', unit: 'ADU', expected: (c) => c.backgroundDrop, tolerance: { rel: 0.06, abs: 20 } },
+      { id: 'why', label: { et: 'Miks just nii palju?', en: 'Why by this much?' }, type: 'text' },
+    ],
+  },
+  {
+    id: 'no-flat',
+    step: 'calibrate',
+    requires: ['flats'],
+    parts: [
+      { id: 'observation', label: { et: 'Mida märkasid?', en: 'What did you notice?' }, type: 'text' },
+    ],
+  },
 ];
 
 export function tasksFor(step: StepId): Task[] {
@@ -170,4 +187,12 @@ export function partLabel(part: TaskPart): string {
 /** Wrong attempts so far over all parts of a task. */
 export function attempts(task: Task): number {
   return task.parts.reduce((s, p) => s + (state.answers[`${task.id}.${p.id}`]?.attempts ?? 0), 0);
+}
+
+/** All number/keyword parts right and all text parts answered. */
+export function isSolved(task: Task): boolean {
+  return task.parts.every((p) => {
+    const a = state.answers[`${task.id}.${p.id}`];
+    return p.type === 'text' ? !!a?.value.trim() : !!a?.correct;
+  });
 }

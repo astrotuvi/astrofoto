@@ -3,15 +3,17 @@
 import './style.css';
 import { h } from './dom';
 import { getLang, type Key, type Lang, onLangChange, setLang, t } from './i18n';
-import { refreshMasters } from './masters';
+import './masters';
 import { state } from './state';
 import { CalibrationStep } from './ui/calibrate';
 import { FilesStep } from './ui/files';
+import { ProjectBar } from './ui/projectbar';
+import { renderResume, type Target } from './ui/resume';
 import { ViewerPanel } from './ui/viewerpanel';
 
 declare const __APP_VERSION__: string;
 
-type Step = 'files' | 'calibration' | 'align' | 'color';
+type Step = 'resume' | 'files' | 'calibration' | 'align' | 'color';
 const STEPS: { id: Step; label: Key; ready: boolean }[] = [
   { id: 'files', label: 'step.files', ready: true },
   { id: 'calibration', label: 'step.calibration', ready: true },
@@ -20,42 +22,72 @@ const STEPS: { id: Step; label: Key; ready: boolean }[] = [
 ];
 
 const viewer = new ViewerPanel();
-const files = new FilesStep();
+const projectBar = new ProjectBar(
+  (warning) => {
+    resumeWarning = warning;
+    go('resume');
+  },
+  () => go('files'),
+);
+const files = new FilesStep((file) => void projectBar.openFile(file));
 const calibration = new CalibrationStep(viewer);
 const top = h('header', { class: 'topbar' });
 const footer = h('footer', { class: 'footer' });
 const stepArea = h('div', { class: 'step-area' });
 let current: Step = 'files';
+let resumeWarning: string | undefined;
 
 function available(s: (typeof STEPS)[number]): boolean {
   return s.ready && (s.id === 'files' || state.frames.length > 0);
 }
 
+function show(): void {
+  if (current === 'resume') stepArea.replaceChildren(renderResume(open, resumeWarning));
+  else stepArea.replaceChildren(current === 'files' ? files.element : calibration.element);
+}
+
 function go(step: Step): void {
   current = step;
-  stepArea.replaceChildren(step === 'files' ? files.element : calibration.element);
   calibration.setActive(step === 'calibration');
+  show();
   renderChrome();
   window.scrollTo({ top: 0 });
 }
 
+function open(target: Target): void {
+  if (target.step === 'calibration') calibration.open(target.sub);
+  go(target.step);
+}
+
 function renderChrome(): void {
-  document.title = t('app.title');
+  document.title = (state.info.title ? state.info.title + ' – ' : '') + t('app.title');
   top.replaceChildren(
     h('div', { class: 'brand' }, h('strong', {}, t('app.title')), h('span', { class: 'tagline' }, t('app.tagline'))),
     h('nav', { class: 'steps', 'aria-label': t('step.nav') },
-      h('ol', {}, STEPS.map((s, i) => {
-        const ok = available(s);
-        return h('li', { class: s.id === current ? 'current' : ok ? '' : 'locked' },
+      h('ol', {},
+        state.frames.length ? h('li', { class: current === 'resume' ? 'current' : '' },
           h('button', {
             type: 'button',
             class: 'step-link',
-            disabled: !ok,
-            'aria-current': s.id === current ? 'step' : undefined,
-            title: ok ? undefined : s.ready ? t('step.lockedFiles') : t('step.later'),
-            onclick: () => go(s.id),
-          }, h('span', { class: 'num' }, String(i + 1)), ' ', t(s.label)));
-      }))),
+            'aria-current': current === 'resume' ? 'page' : undefined,
+            title: t('resume.title'),
+            onclick: () => {
+              resumeWarning = undefined;
+              go('resume');
+            },
+          }, t('step.overview'))) : null,
+        STEPS.map((s, i) => {
+          const ok = available(s);
+          return h('li', { class: s.id === current ? 'current' : ok ? '' : 'locked' },
+            h('button', {
+              type: 'button',
+              class: 'step-link',
+              disabled: !ok,
+              'aria-current': s.id === current ? 'step' : undefined,
+              title: ok ? undefined : s.ready ? t('step.lockedFiles') : t('step.later'),
+              onclick: () => go(s.id),
+            }, h('span', { class: 'num' }, String(i + 1)), ' ', t(s.label)));
+        }))),
     h('div', { class: 'lang segmented', role: 'group', 'aria-label': t('lang.label') },
       (['et', 'en'] as Lang[]).map((l) => h('button', {
         type: 'button',
@@ -64,26 +96,22 @@ function renderChrome(): void {
         'aria-pressed': String(l === getLang()),
         onclick: () => setLang(l),
       }, l.toUpperCase()))),
+    projectBar.element,
   );
   footer.replaceChildren(t('app.footer', { version: __APP_VERSION__ }));
 }
 
-// Masters depend on the frames: rebuild them when frames are added, removed or changed
 state.on((kind) => {
   if (kind === 'frames') {
-    try {
-      refreshMasters();
-    } catch {
-      // e.g. frames of different sizes; the checks explain it
-    }
     if (state.frames.length === 0 && current !== 'files') go('files');
     else renderChrome();
   }
+  if (kind === 'info') document.title = (state.info.title ? state.info.title + ' – ' : '') + t('app.title');
 });
 
 document.documentElement.lang = getLang();
 renderChrome();
-stepArea.replaceChildren(files.element);
+show();
 document.getElementById('app')!.replaceChildren(
   top,
   h('main', { class: 'layout' }, stepArea, viewer.element),
@@ -92,7 +120,9 @@ document.getElementById('app')!.replaceChildren(
 
 onLangChange(() => {
   renderChrome();
+  projectBar.render();
   files.render();
   if (current === 'calibration') calibration.render();
+  if (current === 'resume') show();
   viewer.render();
 });

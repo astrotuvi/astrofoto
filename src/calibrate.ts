@@ -116,6 +116,30 @@ export function masterBias(biases: Plane[], method: CombineMethod): Plane {
   return combine(biases, method);
 }
 
+/** Flat values below this are treated as unexposed, so the result is NaN instead of huge. */
+const MIN_FLAT = 0.05;
+
+/** (light − bias − scale·dark) / flat; any part may be left out. */
+export function calibrateLight(
+  light: Plane,
+  bias: Plane | null,
+  dark: { plane: Plane; scale: number } | null,
+  flat: Plane | null,
+): Plane {
+  const data = new Float32Array(light.data.length);
+  for (let i = 0; i < data.length; i++) {
+    let v = light.data[i];
+    if (bias) v -= bias.data[i];
+    if (dark) v -= dark.scale * dark.plane.data[i];
+    if (flat) {
+      const f = flat.data[i];
+      v = f > MIN_FLAT ? v / f : NaN;
+    }
+    data[i] = v;
+  }
+  return { width: light.width, height: light.height, data };
+}
+
 /** Median (or mean) of (dark − master bias). Without a bias the darks are combined as they are. */
 export function masterDark(darks: Plane[], bias: Plane | null, method: CombineMethod): Plane {
   return combine(bias ? darks.map((d) => subtract(d, bias)) : darks, method);

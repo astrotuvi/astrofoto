@@ -77,6 +77,20 @@ export class MeasureContext {
     return clippedMean(values(m.image.data, m.image.width), DEFAULT_SIGMA) / m.exposure;
   }
 
+  /** The light frame used in the calibration tasks. */
+  get calibrationLight() {
+    return state.framesOf('light')[0];
+  }
+
+  /** How much the background (median) drops from the trimmed raw light to the calibrated one. */
+  get backgroundDrop(): number | undefined {
+    const f = this.calibrationLight;
+    const cal = f && state.calibrated.get(f.meta.id);
+    if (!cal) return undefined;
+    const raw = trimPlane(f.image, state.settings.trim ?? null);
+    return median(raw.data) - median(cal.data);
+  }
+
   /** The filter used in the flat task: the first one with flats. */
   get flatFilter(): string {
     return state.filtersOf('flat')[0] ?? '';

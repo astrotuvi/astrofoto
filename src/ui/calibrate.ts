@@ -4,18 +4,20 @@ import { hasErrors, runChecks } from '../checks';
 import { h } from '../dom';
 import { fmt, type Key, t } from '../i18n';
 import { term } from '../i18n/glossary';
-import { refreshMasters, suggestedTrim } from '../masters';
+import { darkScale, refreshAll, suggestedTrim } from '../masters';
 import { type MasterKind, masterId, state } from '../state';
 import { tasksFor } from '../tasks';
 import type { CombineMethod, Region, StepId } from '../types';
 import { renderChecks } from './checks';
 import { renderWhy } from './explain';
 import { renderTasks } from './task';
+import type { CalSub } from './resume';
 import type { ViewerPanel } from './viewerpanel';
 
-type Sub = 'trim' | 'bias' | 'dark' | 'flat';
-const SUBS: Sub[] = ['trim', 'bias', 'dark', 'flat'];
-const SUB_LABEL: Record<Sub, Key> = { trim: 'cal.trim', bias: 'cal.bias', dark: 'cal.dark', flat: 'cal.flat' };
+type Sub = CalSub;
+const SUBS: Sub[] = ['trim', 'bias', 'dark', 'flat', 'apply'];
+const SUB_LABEL: Record<Sub, Key> = { trim: 'cal.trim', bias: 'cal.bias', dark: 'cal.dark', flat: 'cal.flat', apply: 'cal.apply' };
+const STEP: Record<Sub, StepId> = { trim: 'trim', bias: 'bias', dark: 'dark', flat: 'flat', apply: 'calibrate' };
 
 interface TrimDraft { mode: 'trim' | 'none'; x0: string; x1: string; y0: string; y1: string }
 
@@ -39,7 +41,7 @@ export class CalibrationStep {
   constructor(private viewer: ViewerPanel) {
     state.on((kind) => {
       if (!this.active) return;
-      if (kind === 'steps' || kind === 'masters' || kind === 'frames' || kind === 'settings' || kind === 'profile') this.render();
+      if (kind === 'steps' || kind === 'masters' || kind === 'calibrated' || kind === 'frames' || kind === 'settings' || kind === 'profile') this.render();
     });
   }
 
@@ -53,7 +55,13 @@ export class CalibrationStep {
 
   private unlocked(sub: Sub): boolean {
     const i = SUBS.indexOf(sub);
-    return i === 0 || state.isDone(SUBS[i - 1] as StepId);
+    return i === 0 || state.isDone(STEP[SUBS[i - 1]]);
+  }
+
+  /** Opens a part, e.g. from the resume page. */
+  open(sub: Sub): void {
+    this.sub = sub;
+    this.error = null;
   }
 
   private go(sub: Sub): void {
@@ -66,7 +74,7 @@ export class CalibrationStep {
 
   render(): void {
     if (!this.unlocked(this.sub)) this.sub = SUBS.filter((s) => this.unlocked(s)).pop()!;
-    const body = this.sub === 'trim' ? this.trim() : this.sub === 'flat' ? this.flat() : this.biasOrDark(this.sub);
+    const body = this.sub === 'trim' ? this.trim() : this.sub === 'flat' ? this.flat() : this.sub === 'apply' ? this.apply() : this.biasOrDark(this.sub);
     this.element.replaceChildren(h('div', {},
       h('h2', {}, t('step.calibration')),
       this.checks(),
@@ -78,7 +86,7 @@ export class CalibrationStep {
           title: this.unlocked(s) ? undefined : t('cal.locked'),
           'aria-current': s === this.sub ? 'step' : undefined,
           onclick: () => this.go(s),
-        }, `${i + 1}. ${t(SUB_LABEL[s])}`, state.isDone(s) ? ' ✓' : ''))),
+        }, `${i + 1}. ${t(SUB_LABEL[s])}`, state.isDone(STEP[s]) ? ' ✓' : ''))),
       this.error ? h('p', { class: 'error', role: 'alert' }, this.error) : null,
       body,
     ));
@@ -174,7 +182,10 @@ export class CalibrationStep {
             const changed = !done || !regionEquals(r, state.settings.trim);
             state.updateSettings({ trim: r });
             state.setStep('trim', { done: true, acceptedAuto: false });
-            if (changed) this.recompute();
+            if (changed) {
+              state.addLog('trim', r ? 'trimSet' : 'trimNone', r ? { region: regionText(r) } : {});
+              this.recompute();
+            }
           },
         }, done ? t('cal.trimUpdate') : t('cal.trimConfirm'))),
       done ? this.trimCheck() : null,
@@ -202,6 +213,7 @@ export class CalibrationStep {
             onclick: () => {
               state.updateSettings({ trim: auto });
               state.setStep('trim', { done: true, acceptedAuto: true });
+              state.addLog('trim', auto ? 'trimAuto' : 'trimNone', auto ? { region: regionText(auto) } : {});
               this.draft = null;
               this.recompute();
             },
@@ -271,12 +283,13 @@ export class CalibrationStep {
 
   private computeNow(kind: MasterKind): void {
     try {
-      const use = kind === 'bias' ? 'useBias' : kind === 'dark' ? 'useDark' : 'useFlat';
-      state.updateSettings({ [use]: true });
       state.setStep(kind, { done: true });
-      refreshMasters();
+      refreshAll();
       const first = kind === 'flat' ? [...state.masters.values()].find((m) => m.kind === 'flat') : state.masters.get(masterId(kind));
-      if (first) this.viewer.show(first.id, { tab: kind === 'flat' ? 'histogram' : 'box' });
+      if (first) {
+        state.addLog(kind, 'masterBuilt', { kind, n: first.count, method: first.method });
+        this.viewer.show(first.id, { tab: kind === 'flat' ? 'histogram' : 'box' });
+      }
     } catch (e) {
       state.setStep(kind, undefined);
       this.error = t('cal.computeFailed', { detail: String(e) });
@@ -287,7 +300,7 @@ export class CalibrationStep {
   private recompute(): void {
     this.later(() => {
       try {
-        refreshMasters();
+        refreshAll();
       } catch (e) {
         this.error = t('cal.computeFailed', { detail: String(e) });
       }
@@ -296,6 +309,7 @@ export class CalibrationStep {
 
   private skip(kind: MasterKind): HTMLElement {
     const use = kind === 'bias' ? 'useBias' : kind === 'dark' ? 'useDark' : 'useFlat';
+    if (state.isDone(kind)) return h('section', { class: 'phase' }, h('p', {}, t(`cal.no.${kind}` as Key)), h('p', { class: 'ok' }, t('cal.skipped')));
     return h('section', { class: 'phase' },
       h('p', {}, t(`cal.no.${kind}` as Key)),
       h('button', {
@@ -305,6 +319,7 @@ export class CalibrationStep {
           state.updateSettings({ [use]: false });
           state.clearMasters(kind);
           state.setStep(kind, { done: true });
+          state.addLog(kind, 'skipped', { kind });
           this.recompute();
         },
       }, t(`cal.skip.${kind}` as Key)),
@@ -338,7 +353,7 @@ export class CalibrationStep {
       h('section', { class: 'phase' },
         h('h3', {}, t('phase.decide')),
         this.methodChoice(kind, frames.length),
-        kind === 'dark' && state.settings.useBias && state.masters.get(masterId('bias'))
+        kind === 'dark' && state.masters.get(masterId('bias'))
           ? h('p', { class: 'hint' }, t('cal.darkMinusBias')) : null),
       h('section', { class: 'phase' },
         h('h3', {}, t('phase.do')),
@@ -359,9 +374,9 @@ export class CalibrationStep {
   private flat(): HTMLElement {
     const filters = state.filtersOf('flat');
     if (filters.length === 0) {
-      return h('div', { class: 'sub' }, renderWhy('flat'), this.skip('flat'), state.isDone('flat') ? this.done() : null);
+      return h('div', { class: 'sub' }, renderWhy('flat'), this.skip('flat'), state.isDone('flat') ? this.next('apply') : null);
     }
-    const darkMaster = state.settings.useDark ? state.masters.get(masterId('dark')) : undefined;
+    const darkMaster = state.masters.get(masterId('dark'));
     const lightFilters = new Set(state.filtersOf('light'));
     const flats = [...state.masters.values()].filter((m) => m.kind === 'flat');
 
@@ -411,7 +426,7 @@ export class CalibrationStep {
             h('td', {}, h('button', { type: 'button', onclick: () => this.viewer.show(m.id, { tab: 'histogram' }) }, t('cal.show'))))))),
         h('p', { class: 'hint' }, t('cal.flatCheck'))) : null,
       renderTasks(tasksFor('flat')),
-      state.isDone('flat') ? this.done() : null,
+      state.isDone('flat') ? this.next('apply') : null,
     );
   }
 
@@ -419,7 +434,84 @@ export class CalibrationStep {
     return h('div', { class: 'next' }, h('button', { type: 'button', class: 'primary', onclick: () => this.go(sub) }, t('cal.next', { what: t(SUB_LABEL[sub]) })));
   }
 
-  private done(): HTMLElement {
-    return h('p', { class: 'ok next' }, t('cal.allDone'));
+  // ------------------------------------------------------------- apply
+
+  private apply(): HTMLElement {
+    const lights = state.framesOf('light');
+    if (lights.length === 0) return h('div', { class: 'sub' }, renderWhy('calibrate'), h('p', { class: 'warning' }, t('cal.noLightFrames')));
+    const s = state.settings;
+    const has = { bias: state.masters.has(masterId('bias')), dark: state.masters.has(masterId('dark')) };
+    const flatFilters = new Set([...state.masters.values()].filter((m) => m.kind === 'flat').map((m) => m.filter));
+    const done = state.isDone('calibrate');
+    const exps = [...new Set(lights.map((f) => f.meta.exposure))];
+    const scale = darkScale(exps[0]);
+
+    const toggle = (key: 'useBias' | 'useDark' | 'useFlat', label: Key, available: boolean) =>
+      h('label', { class: 'choice', title: available ? undefined : t('cal.noMaster') },
+        h('input', {
+          type: 'checkbox',
+          checked: s[key] && available,
+          disabled: !available || this.busy,
+          onchange: (e: Event) => {
+            state.updateSettings({ [key]: (e.target as HTMLInputElement).checked });
+            if (done) {
+              state.addLog('calibrate', 'switched', { what: label, on: (e.target as HTMLInputElement).checked ? 'on' : 'off' });
+              this.recompute();
+            }
+          },
+        }), ' ', t(label));
+
+    const parts = [
+      t('formula.light'),
+      s.useBias && has.bias ? ` − ${t('formula.bias')}` : '',
+      s.useDark && has.dark ? ` − ${scale === 1 ? '' : fmt(scale, 3) + ' × '}${t('formula.dark')}` : '',
+    ].join('');
+    const formula = s.useFlat && flatFilters.size ? `(${parts}) / ${t('formula.flat')}` : parts;
+
+    return h('div', { class: 'sub' },
+      renderWhy('calibrate'),
+      h('section', { class: 'phase' },
+        h('h3', {}, t('phase.look')),
+        h('p', {}, t('cal.applyLook', { n: lights.length, exp: exps.map((e) => fmt(e, 3)).join(', ') })),
+        h('div', { class: 'buttons left' },
+          h('button', { type: 'button', onclick: () => this.viewer.show(lights[0].meta.id, { tab: 'histogram' }) }, t('cal.showRawLight')))),
+      h('section', { class: 'phase' },
+        h('h3', {}, t('phase.decide')),
+        h('p', {}, t('cal.applyDecide')),
+        toggle('useBias', 'cal.useBias', has.bias),
+        toggle('useDark', 'cal.useDark', has.dark),
+        toggle('useFlat', 'cal.useFlat', flatFilters.size > 0),
+        h('pre', { class: 'formula' }, `${t('formula.result')} = ${formula}`),
+        has.dark && scale !== 1 ? h('p', { class: 'hint' }, t('cal.darkScaled', { scale: fmt(scale, 3) })) : null,
+        has.dark && !has.bias ? h('p', { class: 'hint' }, t('cal.darkWithBias')) : null,
+        s.useFlat ? lights.filter((f) => !flatFilters.has(f.meta.filter)).slice(0, 1).map((f) =>
+          h('p', { class: 'warning' }, t('cal.noFlatFor', { filter: f.meta.filter || '–' }))) : null),
+      h('section', { class: 'phase' },
+        h('h3', {}, t('phase.do')),
+        h('button', {
+          type: 'button',
+          class: 'primary',
+          disabled: this.busy || hasErrors(),
+          onclick: () => this.later(() => {
+            state.setStep('calibrate', { done: true });
+            refreshAll();
+            state.addLog('calibrate', 'calibrated', { n: state.calibrated.size, bias: String(s.useBias && has.bias), dark: String(s.useDark && has.dark), flat: String(s.useFlat && flatFilters.size > 0) });
+            const first = lights[0].meta.id;
+            if (state.calibrated.has(first)) this.viewer.show(`cal:${first}`, { tab: 'histogram' });
+          }),
+        }, this.busy ? t('cal.computing') : done ? t('cal.recalibrate') : t('cal.calibrate', { n: lights.length }))),
+      done ? h('section', { class: 'phase' },
+        h('h3', {}, t('phase.check')),
+        h('p', {}, t('cal.applyCheck')),
+        h('table', { class: 'grid compact' },
+          h('thead', {}, h('tr', {}, h('th', {}, t('files.filter')), h('th', {}, t('files.name')), h('th', {}, ''), h('th', {}, ''))),
+          h('tbody', {}, lights.map((f) => h('tr', {},
+            h('td', {}, f.meta.filter),
+            h('td', { class: 'name' }, f.meta.fileName),
+            h('td', {}, h('button', { type: 'button', onclick: () => this.viewer.show(f.meta.id) }, t('cal.raw'))),
+            h('td', {}, h('button', { type: 'button', onclick: () => this.viewer.show(`cal:${f.meta.id}`) }, t('cal.calibratedShort')))))))) : null,
+      renderTasks(tasksFor('calibrate')),
+      done ? h('p', { class: 'ok next' }, t('cal.allDone')) : null,
+    );
   }
 }

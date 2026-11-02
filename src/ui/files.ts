@@ -23,7 +23,8 @@ export class FilesStep {
 
   private rows = new Map<string, HTMLTableRowElement>();
 
-  constructor() {
+  /** `openProject` is called when an .astroproj file is dropped or picked. */
+  constructor(private openProject: (file: File) => void) {
     state.on((kind) => {
       if (kind === 'selection') this.markSelected();
       else if (kind === 'frames' || kind === 'profile') this.render();
@@ -46,6 +47,8 @@ export class FilesStep {
   }
 
   private async load(files: PickedFile[]): Promise<void> {
+    const project = files.find((f) => f.name.toLowerCase().endsWith('.astroproj'));
+    if (project) return this.openProject(project.file);
     if (files.length === 0) return;
     this.busy = true;
     this.render();
@@ -62,7 +65,7 @@ export class FilesStep {
     const fileInput = h('input', {
       type: 'file',
       multiple: true,
-      accept: '.fits,.fit,.fts,.gz,.zip',
+      accept: '.fits,.fit,.fts,.gz,.zip,.astroproj',
       hidden: true,
       onchange: (e: Event) => {
         const input = e.target as HTMLInputElement;

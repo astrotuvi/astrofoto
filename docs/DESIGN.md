@@ -2,7 +2,7 @@
 
 A browser app for reducing monochrome CCD images in FITS format and combining them into colour images. It is built as a learning tool for an after-school astronomy project.
 
-Status: milestones 1 (viewer) and 2 (trim and master frames) implemented. Last updated 2026-11-02.
+Status: milestones 1–3 (viewer, master frames, calibration and project file) implemented. Last updated 2026-11-02.
 
 ---
 
@@ -307,7 +307,8 @@ Planned tasks for the reference dataset:
 | 4 | Bias | Predict the noise of a master bias made of 25 frames, then measure it. | ≈ 1/5 of a single frame (1/√N) |
 | 5 | Dark | Calculate the dark current in ADU/s. Is a dark frame needed? What does it still fix? | ≈ 0.13 ADU/s; hot pixels |
 | 6 | Flat | Measure the normalised master flat in the centre and the four corners. How much darker is the darkest corner, in %? Is it vignetting? | 6–13 % depending on filter; one side is darker (a slope from the twilight sky), not all edges |
-| 7 | Flat | Calibrate without the flat and compare the background at the centre and the edge. | experiment |
+| 7a | Calibration | Measure the sky background before and after calibration. How much did it drop, and why? | ≈ 1458 ADU (bias + dark) |
+| 7 | Calibration | Calibrate without the flat and compare the background at the centre and the edge. | experiment |
 | 8 | Header | Calculate the plate scale in ″/px and the field of view in ′. | ≈ 0.45″/px, ≈ 3.8′ |
 | 9 | Alignment | How large is the shift between the first and last frame, in px and ″? What causes it? | up to ≈ 4 px ≈ 1.8″; tracking |
 | 10 | Stacking | Find a cosmic-ray hit. Which stacking method removes it, and why? | median |
@@ -494,14 +495,14 @@ A zip file with this layout:
 
 ```
 project.json      settings, decisions, answers, comments, log
-frames/*.fits     the original raw files, unchanged
+frames/<name>     the original raw files as loaded (also .fits.gz), unchanged
 ```
 
-- The raw files are stored inside, so the project is a **single file**. It can be emailed and never has broken file references. For the reference dataset it is about 30–55 MB.
-- Master frames, stacks and versions are **not stored**. They are recomputed from `project.json` when the project is opened, which takes well under a second at these sizes.
+- The raw files are stored inside, so the project is a **single file**. It can be emailed and never has broken file references. For the reference dataset it is about 40 MB (raw data compressed at zip level 1).
+- Master frames, stacks and versions are **not stored**. They are recomputed from `project.json` when the project is opened. For the reference dataset, opening and saving each take under 2 s.
 - Renaming the file to `.zip` shows its contents, which helps with debugging.
 - When a project is opened, a **"Kus ma pooleli jäin"** page (where I left off) shows the finished steps, the open tasks and the last log entries.
-- `project.json` records the app version that saved it. A project from a newer version opened in an older one (e.g. an old offline file) shows a warning. Older projects are upgraded on open.
+- `project.json` records the format version and the app version that saved it. A project from a newer app version opened in an older one (e.g. an old offline file) shows a warning; a newer *format* version cannot be opened. Older projects are upgraded on open.
 
 ### 6.6 Data model
 
@@ -540,7 +541,7 @@ interface InstrumentProfile {
 
 interface ProcessingSettings {
   trim?: { x0: number; x1: number; y0: number; y1: number } | null;  // undefined = not decided; null = no trimming
-  useBias: boolean; useDark: boolean; useFlat: boolean;
+  useBias: boolean; useDark: boolean; useFlat: boolean;  // applied to the lights; masters are built regardless
   darkForFlats: boolean;
   combine: Record<'bias' | 'dark' | 'flat', 'median' | 'mean' | 'sigmaClip'>;
   sigmaClip?: { low: number; high: number };   // default 3σ / 3σ, σ from the median absolute deviation
@@ -628,7 +629,8 @@ src/
   stack.ts             median/mean combine
   color.ts             channel mapping, black/white point, stretch → RGBA
   viewer.ts            canvas display, zoom/pan, overlays, click handling
-  project.ts           save/open .astroproj (fflate + File System Access with fallback)
+  project.ts           .astroproj format: serialize, open, migrate
+  fileio.ts            File System Access with download / <input> fallback
   log.ts               processing log
   report/
     model.ts           report document model (headings, paragraphs, tables, figures, captions)
@@ -658,6 +660,7 @@ src/
     header.ts          FITS header viewer
     explain.ts         "Miks?" / "Uuri lähemalt" panel
     task.ts            task with answer fields and hint levels
+    projectbar.ts      new / open / save, Ctrl+S, unsaved-changes warning
     checks.ts          list of check results
 test/                  Vitest tests with synthetic FITS files (helpers.ts)
 docs/

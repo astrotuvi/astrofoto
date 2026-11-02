@@ -96,7 +96,7 @@ export async function importFiles(files: PickedFile[]): Promise<ImportResult> {
         warnings.push({ fileName: name, reason: 'otherInstrument', detail: instrumentName(image.header) });
       }
       for (const w of image.warnings) warnings.push({ fileName: name, reason: w });
-      frames.push({ meta: describeFrame(state.newId(), name, image.header, image, profile), image });
+      frames.push({ meta: describeFrame(state.newId(), name, image.header, image, profile), image, raw: bytes });
       known.add(name);
     } catch (e) {
       problems.push(e instanceof FitsError
@@ -105,5 +105,6 @@ export async function importFiles(files: PickedFile[]): Promise<ImportResult> {
     }
   }
   state.addFrames(frames);
+  if (frames.length) state.addLog('files', 'filesAdded', { n: frames.length });
   return { added: frames.length, problems, warnings };
 }

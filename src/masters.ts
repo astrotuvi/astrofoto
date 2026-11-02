@@ -1,6 +1,6 @@
-// Builds master frames from the loaded frames and the student's settings.
+// Builds master frames and calibrated lights from the loaded frames and the student's settings.
 
-import { detectTrim, masterBias, masterDark, masterFlat, type Plane, trimPlane } from './calibrate';
+import { calibrateLight, detectTrim, masterBias, masterDark, masterFlat, type Plane, trimPlane } from './calibrate';
 import { type FitsImage, type HeaderCard, type HeaderValue, valueCard } from './fits';
 import { type Frame, type Master, type MasterKind, masterId, state } from './state';
 import type { CombineMethod, Region, StepId } from './types';
@@ -16,10 +16,10 @@ function regionText(r: Region): string {
 }
 
 /** A float image with the first source frame's header and HISTORY lines. */
-function toImage(p: Plane, source: Frame, kind: string, history: string[]): FitsImage {
+function toImage(p: Plane, source: Frame, kind: string, history: string[], imageType = `MASTER ${kind.toUpperCase()}`): FitsImage {
   const keep = (c: HeaderCard) => !['NAXIS1', 'NAXIS2', 'BZERO', 'BSCALE', 'BITPIX', 'CHECKSUM', 'DATASUM', 'IMAGETYP'].includes(c.key);
   const extra = [
-    { key: 'IMAGETYP', value: `MASTER ${kind.toUpperCase()}` },
+    { key: 'IMAGETYP', value: imageType },
   ];
   const cards: HeaderCard[] = [
     ...source.image.cards.filter(keep),
@@ -51,7 +51,7 @@ export function buildDark(): Master | null {
   const frames = state.framesOf('dark');
   if (frames.length === 0) return null;
   const method = state.settings.combine.dark;
-  const bias = state.settings.useBias ? state.masters.get(masterId('bias')) : undefined;
+  const bias = state.masters.get(masterId('bias'));
   const p = masterDark(frames.map(plane), bias ? bias.image : null, method);
   const exposure = frames[0].meta.exposure;
   return {
@@ -66,8 +66,8 @@ export function buildDark(): Master | null {
 
 export function buildFlats(): Master[] {
   const method = state.settings.combine.flat;
-  const bias = state.settings.useBias ? state.masters.get(masterId('bias')) : undefined;
-  const dark = state.settings.useDark && state.settings.darkForFlats ? state.masters.get(masterId('dark')) : undefined;
+  const bias = state.masters.get(masterId('bias'));
+  const dark = state.settings.darkForFlats ? state.masters.get(masterId('dark')) : undefined;
   return state.filtersOf('flat').map((filter) => {
     const frames = state.framesOf('flat', filter);
     const r = masterFlat(
@@ -103,20 +103,44 @@ export function computeMasters(kind: MasterKind): boolean {
 }
 
 /**
- * Rebuilds the masters of the steps already done, in order, after the frames or settings
- * have changed. A step whose frames have all gone is reopened.
+ * Rebuilds the results of the steps already done, in order, after the frames or settings
+ * have changed. A step done without frames ("continue without") stays done.
  */
-export function refreshMasters(): void {
+export function refreshAll(): void {
   for (const kind of ['bias', 'dark', 'flat'] as MasterKind[]) {
-    const step = STEP_OF[kind];
-    if (!state.isDone(step)) {
-      state.clearMasters(kind);
-      continue;
-    }
-    const use = kind === 'bias' ? state.settings.useBias : kind === 'dark' ? state.settings.useDark : state.settings.useFlat;
-    if (!use) continue;
-    if (!computeMasters(kind)) state.setStep(step, undefined);
+    if (state.isDone(STEP_OF[kind])) computeMasters(kind);
+    else state.clearMasters(kind);
   }
+  if (state.isDone('calibrate')) calibrateLights();
+  else if (state.calibrated.size) state.setCalibrated(new Map());
+}
+
+/** Dark scale factor for a light: t_light / t_dark, or 1 when the dark still contains the bias. */
+export function darkScale(lightExposure: number): number {
+  const dark = state.masters.get(masterId('dark'));
+  if (!dark || !state.masters.has(masterId('bias')) || !(dark.exposure > 0)) return 1;
+  return lightExposure / dark.exposure;
+}
+
+/** calibrated = (light − master bias − scale · master dark) / master flat, for each light. */
+export function calibrateLights(): void {
+  const s = state.settings;
+  const bias = s.useBias ? state.masters.get(masterId('bias')) : undefined;
+  const dark = s.useDark ? state.masters.get(masterId('dark')) : undefined;
+  const out = new Map<string, FitsImage>();
+  for (const f of state.framesOf('light')) {
+    const flat = s.useFlat ? state.masters.get(masterId('flat', f.meta.filter)) : undefined;
+    const scale = darkScale(f.meta.exposure);
+    const p = calibrateLight(plane(f), bias?.image ?? null, dark ? { plane: dark.image, scale } : null, flat?.image ?? null);
+    const history = [
+      ...trimHistory(),
+      bias ? 'Subtracted master bias' : 'No bias subtracted',
+      dark ? `Subtracted master dark × ${Number(scale.toFixed(4))}` : 'No dark subtracted',
+      flat ? `Divided by master flat ${f.meta.filter}` : 'Not divided by a flat',
+    ];
+    out.set(f.meta.id, toImage(p, f, 'light', history, 'LIGHT'));
+  }
+  state.setCalibrated(out);
 }
 
 /** The trim region the app finds from a flat (or a light, if there are no flats). */
@@ -124,3 +148,13 @@ export function suggestedTrim(): Region | null | undefined {
   const f = state.framesOf('flat')[0] ?? state.framesOf('light')[0];
   return f ? detectTrim(f.image) : undefined;
 }
+
+// Results depend on the frames: rebuild them whenever frames are added, removed or changed
+state.on((kind) => {
+  if (kind !== 'frames') return;
+  try {
+    refreshAll();
+  } catch {
+    // e.g. frames of different sizes; the consistency checks explain it
+  }
+});
