@@ -1,0 +1,12 @@
+{
+  "id": "to-azt12-andor",
+  "name": "TO AZT-12 + Andor",
+  "match": { "telescop": "AZT-12", "instrume": "Andor" },
+  "keywords": {},
+  "kindValues": {},
+  "trim": { "x0": 4, "x1": 515, "y0": 0, "y1": 511 },
+  "saturationLevel": 60000,
+  "pixelSizeIncludesBinning": true,
+  "importBinning": 1,
+  "filters": {}
+}

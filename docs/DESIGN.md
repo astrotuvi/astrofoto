@@ -2,7 +2,7 @@
 
 A browser app for reducing monochrome CCD images in FITS format and combining them into colour images. It is built as a learning tool for an after-school astronomy project.
 
-Status: design, before implementation. Last updated 2026-11-02.
+Status: milestone 1 (viewer) implemented. Last updated 2026-11-02.
 
 ---
 
@@ -609,8 +609,11 @@ The report items store **how to redraw** a figure, not the image itself. Images 
 ```
 src/
   main.ts              app start, step navigation
+  types.ts             shared data model (§6.6)
   state.ts             Project + in-memory frames, change events, out-of-date flags
+  dom.ts               small DOM helper
   fits.ts              FITS reader and writer (incl. .fits.gz)
+  import.ts            dropped/picked files and zips → frames
   instrument/
     profile.ts         profile matching, header access through aliases, consistency checks
     defaults.ts        built-in keyword aliases, frame type values, filter wavelengths
@@ -633,6 +636,7 @@ src/
     zip.ts             figures zip
   offline.ts           service worker registration, update prompt
   tools/
+    plot.ts            line/step plots with labelled axes
     profile.ts  boxstats.ts  histogram.ts  starprofile.ts  distance.ts  compare.ts
   tasks/
     index.ts           task definitions and expected-value functions
@@ -645,6 +649,9 @@ src/
     et/tasks/*.md  en/tasks/*.md    task texts and hints
   ui/
     files.ts  profile.ts  calibrate.ts  align.ts  color.ts  resume.ts  glossary.ts  settings.ts
+    viewerpanel.ts     viewer with toolbar, readout and tool tabs
+    header.ts          FITS header viewer
+test/                  Vitest tests with synthetic FITS files (helpers.ts)
 docs/
   DESIGN.md            this document
 ```
