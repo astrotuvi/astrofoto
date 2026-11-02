@@ -73,12 +73,32 @@ export class ProjectBar {
     return !state.dirty || state.frames.length === 0 || confirm(t('project.discard'));
   }
 
+  /** Asks for the title and the student, and says what happens to the open project. */
   private newProject(): void {
-    if (!this.confirmDiscard()) return;
-    this.handle = null;
-    this.message = null;
-    state.clear();
-    this.cleared();
+    const isOpen = state.frames.length > 0;
+    const title = h('input', { type: 'text', placeholder: t('project.defaultTitle'), autofocus: true });
+    const student = h('input', { type: 'text', value: isOpen ? state.info.student : '' });
+    const dialog = h('dialog', { class: 'new-project', 'aria-labelledby': 'new-project-title' },
+      h('form', { method: 'dialog' },
+        h('h2', { id: 'new-project-title' }, t('project.newTitle')),
+        isOpen ? h('p', {}, t('project.closeNote', { name: this.handle?.name ?? projectTitle() })) : null,
+        isOpen && state.dirty ? h('p', { class: 'warning' }, t('project.unsavedNote')) : null,
+        h('label', { class: 'field' }, t('resume.projectTitle'), title),
+        h('label', { class: 'field' }, t('resume.student'), student),
+        h('div', { class: 'dialog-buttons' },
+          h('button', { type: 'button', onclick: () => dialog.close() }, t('project.cancel')),
+          h('button', { type: 'submit', class: 'primary', value: 'ok' }, t('project.start')))));
+    dialog.addEventListener('close', () => {
+      dialog.remove();
+      if (dialog.returnValue !== 'ok') return;
+      this.handle = null;
+      this.message = null;
+      state.clear();
+      state.setInfo({ title: title.value.trim(), student: student.value.trim() });
+      this.cleared();
+    });
+    document.body.append(dialog);
+    dialog.showModal();
   }
 
   async save(saveAs: boolean): Promise<void> {

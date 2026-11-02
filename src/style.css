@@ -458,6 +458,19 @@ pre.formula {
 }
 
 label.field { display: flex; flex-direction: column; gap: 0.2rem; max-width: 30rem; }
+
+dialog.new-project {
+  width: min(26rem, calc(100% - 2rem));
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem 1.2rem;
+}
+dialog.new-project::backdrop { background: rgb(0 0 0 / 0.4); }
+dialog.new-project form { display: flex; flex-direction: column; gap: 0.7rem; }
+dialog.new-project p { margin: 0; }
+.dialog-buttons { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.3rem; }
 ol.progress { margin: 0; padding-left: 1.4rem; display: flex; flex-direction: column; gap: 0.2rem; }
 ol.progress li.done { color: var(--muted); }
 ul.log { margin: 0; padding-left: 1.2rem; }

@@ -132,7 +132,7 @@ export interface DisplayRange {
   /** Used for 'manual'; for the other modes they are recomputed from the image. */
   black: number;
   white: number;
-  /** Missing in projects from 0.8 and earlier: linear. */
+  /** Missing in projects from 0.8.0 and earlier: linear. */
   scale?: DisplayScale;
 }
 
