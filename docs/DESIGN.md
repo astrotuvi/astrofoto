@@ -271,6 +271,8 @@ Topics beyond the school curriculum go in a collapsed **"Uuri lähemalt"** secti
 
 The first image is shown **linear and unstretched**, so it looks nearly black. The student sees why stretching is needed before the stretch controls appear.
 
+The viewer's **Skaala** (Scale) menu maps the values between black and white to grey linearly, by square root, logarithmically (log(1 + 1000x) / log 1001) or by asinh (asinh(10x) / asinh 10). It starts linear. The scale is part of the display range, so comparisons and report figures use it too, and the caption names it when it is not linear.
+
 ### 4.3 Measuring tools (available in all steps)
 
 | Tool | Shows |

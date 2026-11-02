@@ -1,6 +1,6 @@
 // Basic statistics on pixel data. NaN values are ignored.
 
-import type { RangeMode, Region } from './types';
+import type { DisplayScale, RangeMode, Region } from './types';
 
 export interface Stats {
   n: number;
@@ -136,4 +136,16 @@ export function displayRange(sorted: Float32Array, mode: RangeMode, black = 0, w
     black: p ? sortedPercentile(sorted, p) : sorted[0],
     white: p ? sortedPercentile(sorted, 100 - p) : sorted[sorted.length - 1],
   };
+}
+
+export const DISPLAY_SCALES: DisplayScale[] = ['linear', 'sqrt', 'log', 'asinh'];
+
+/** Grey level 0–255 of a value: 0–1 between black and white, then through the scale. */
+export function greyLevel(v: number, black: number, white: number, scale: DisplayScale = 'linear'): number {
+  const x = Math.min(1, Math.max(0, (v - black) / (white - black || 1)));
+  const y = scale === 'sqrt' ? Math.sqrt(x)
+    : scale === 'log' ? Math.log1p(1000 * x) / Math.log1p(1000)
+    : scale === 'asinh' ? Math.asinh(10 * x) / Math.asinh(10)
+    : x;
+  return Math.round(y * 255);
 }

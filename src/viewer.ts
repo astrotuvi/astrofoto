@@ -1,6 +1,7 @@
 // Image display on a canvas: zoom, pan, display range, overlays and pointer tools.
 
-import type { Region } from './types';
+import { greyLevel } from './stats';
+import type { DisplayScale, Region } from './types';
 
 export type Tool = 'pixel' | 'profile' | 'box' | 'pick';
 export type ProfileAxis = 'row' | 'column';
@@ -57,6 +58,7 @@ export class Viewer {
   private compare: Compare | null = null;
   private black = 0;
   private white = 1;
+  private greyScale: DisplayScale = 'linear';
   private scale = 1;
   private offsetX = 0;
   private offsetY = 0;
@@ -98,9 +100,10 @@ export class Viewer {
     else this.draw();
   }
 
-  setRange(black: number, white: number): void {
+  setRange(black: number, white: number, scale: DisplayScale = 'linear'): void {
     this.black = black;
     this.white = white;
+    this.greyScale = scale;
     this.renderBitmap();
     if (this.compare) this.renderInto(this.second, this.compare.image);
     this.draw();
@@ -234,7 +237,6 @@ export class Viewer {
       bctx.putImageData(out, 0, 0);
       return;
     }
-    const range = this.white - this.black || 1;
     for (let y = 0; y < img.height; y++) {
       const srcRow = (img.flipY ? img.height - 1 - y : y) * img.width;
       for (let x = 0; x < img.width; x++) {
@@ -243,8 +245,7 @@ export class Viewer {
         if (Number.isNaN(v)) {
           px[o] = 255; px[o + 1] = 0; px[o + 2] = 255;
         } else {
-          const g = Math.round(Math.min(1, Math.max(0, (v - this.black) / range)) * 255);
-          px[o] = px[o + 1] = px[o + 2] = g;
+          px[o] = px[o + 1] = px[o + 2] = greyLevel(v, this.black, this.white, this.greyScale);
         }
         px[o + 3] = 255;
       }

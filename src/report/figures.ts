@@ -8,11 +8,11 @@ import { fmt, getLang, t } from '../i18n';
 import { pixelScale } from '../instrument/profile';
 import { stackImage } from '../stack';
 import { state } from '../state';
-import { displayRange, finite } from '../stats';
+import { displayRange, finite, greyLevel } from '../stats';
 import { histogramData, rangeMarkers } from '../tools/histogram';
 import { drawPlot } from '../tools/plot';
 import { profileValues } from '../tools/profile';
-import type { Region } from '../types';
+import type { DisplayScale, Region } from '../types';
 import { levelText, reportImage, unitOf } from './build';
 import type { FigureSnapshot } from './model';
 
@@ -144,15 +144,17 @@ function drawScaleBar(l: ImageLayout, scale: number | undefined): void {
   ctx.restore();
 }
 
-/** Grey bar from black to white, with the values at its ends. */
-function drawGreyLegend(l: ImageLayout, black: number, white: number, unit: string): void {
+/** Grey bar from black to white in the scale of the image, with the values at its ends. */
+function drawGreyLegend(l: ImageLayout, black: number, white: number, unit: string, scale: DisplayScale): void {
   const { ctx } = l;
   const w = Math.min(500, l.w / 2);
   const x = l.x;
   const y = l.h + 30;
   const g = ctx.createLinearGradient(x, 0, x + w, 0);
-  g.addColorStop(0, '#000');
-  g.addColorStop(1, '#fff');
+  for (let i = 0; i <= 32; i++) {
+    const c = greyLevel(i / 32, 0, 1, scale);
+    g.addColorStop(i / 32, `rgb(${c},${c},${c})`);
+  }
   ctx.save();
   ctx.fillStyle = g;
   ctx.fillRect(x, y, w, 28);
@@ -208,21 +210,21 @@ function imageFigure(s: Extract<FigureSnapshot, { type: 'image' }>): HTMLCanvasE
   const img = reportImage(s.imageId);
   if (!img) return null;
   const { black, white } = displayRange(sorted(img.data), s.range.mode, s.range.black, s.range.white);
+  const scale = s.range.scale ?? 'linear';
   const view = validView(s.view, img);
-  const range = white - black || 1;
   const data = img.data;
   const bitmap = cropBitmap(img.width, img.height, bottomUp(img), view, (i, out, o) => {
     const v = data[i];
     if (Number.isNaN(v)) {
       out[o] = 255; out[o + 1] = 0; out[o + 2] = 255;
     } else {
-      out[o] = out[o + 1] = out[o + 2] = Math.round(Math.min(1, Math.max(0, (v - black) / range)) * 255);
+      out[o] = out[o + 1] = out[o + 2] = greyLevel(v, black, white, scale);
     }
     out[o + 3] = 255;
   });
   const l = layoutImage(bitmap);
   drawMarks(l, img, view, s);
-  drawGreyLegend(l, black, white, unitOf(s.imageId));
+  drawGreyLegend(l, black, white, unitOf(s.imageId), scale);
   drawScaleBar(l, state.profile ? pixelScale(img.header, state.profile) : undefined);
   return l.canvas;
 }

@@ -124,11 +124,16 @@ export interface MentorComment {
 /** How an image is mapped to grey: from the faintest to the brightest pixel, percentiles, or set by hand. */
 export type RangeMode = 'minmax' | 'p995' | 'p99' | 'manual';
 
+/** How values between black and white are turned into grey. */
+export type DisplayScale = 'linear' | 'sqrt' | 'log' | 'asinh';
+
 export interface DisplayRange {
   mode: RangeMode;
   /** Used for 'manual'; for the other modes they are recomputed from the image. */
   black: number;
   white: number;
+  /** Missing in projects from 0.8 and earlier: linear. */
+  scale?: DisplayScale;
 }
 
 /**

@@ -80,7 +80,10 @@ export function defaultCaption(s: ReportSnapshot): string {
   switch (s.type) {
     case 'image': {
       const [black, white] = levelText(s.range.black, s.range.white);
-      const parts = [t('report.cap.image', { title: imageLabel(s.imageId), black, white, unit: unitOf(s.imageId) })];
+      const scale = s.range.scale ?? 'linear';
+      const parts = [scale === 'linear'
+        ? t('report.cap.image', { title: imageLabel(s.imageId), black, white, unit: unitOf(s.imageId) })
+        : t('report.cap.imageScaled', { title: imageLabel(s.imageId), black, white, unit: unitOf(s.imageId), scale: t(`report.cap.scale.${scale}` as Key) })];
       if (s.view) parts.push(t('report.cap.view', { region: regionText(s.view) }));
       if (s.box) parts.push(t('report.cap.box'));
       if (s.line) parts.push(t(s.line.axis === 'row' ? 'report.cap.lineRow' : 'report.cap.lineColumn', { n: s.line.index + 1 }));

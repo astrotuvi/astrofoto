@@ -98,6 +98,8 @@ describe('report', () => {
     const flat = items[2];
     expect(flat.type === 'figure' && flat.caption).toBe('Koondkaader: tasaväljakaader V. Hallskaala 0,90…1,10.');
     expect(flat.type === 'figure' && flat.fileName).toBe('joonis-01-koondkaader-tasavaljakaader-v.png');
+    expect(defaultCaption({ type: 'image', imageId: 'master:flat:V', range: { mode: 'manual', black: 0.9, white: 1.1, scale: 'log' }, view: null }))
+      .toBe('Koondkaader: tasaväljakaader V. Hallskaala 0,90…1,10, logaritmiline skaala.');
     expect(items[3]).toMatchObject({ type: 'paragraph', itemId: 'r3' });
     expect(items[4]).toMatchObject({ type: 'figure', number: 2, caption: 'Oma allkiri' });
     expect(figures(buildReport()).map((f) => f.number)).toEqual([1, 2]);

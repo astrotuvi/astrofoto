@@ -5,13 +5,13 @@ import { h } from '../dom';
 import { bottomUp } from '../fits';
 import { fmt, type Key, t } from '../i18n';
 import { term } from '../i18n/glossary';
-import { displayRange, finite } from '../stats';
+import { DISPLAY_SCALES, displayRange, finite } from '../stats';
 import { stackImage } from '../stack';
 import { state } from '../state';
 import { renderBoxStats } from '../tools/boxstats';
 import { type HistogramChange, renderHistogram } from '../tools/histogram';
 import { renderProfile } from '../tools/profile';
-import { KINDS, type RangeMode, type ReportSnapshot } from '../types';
+import { type DisplayScale, KINDS, type RangeMode, type ReportSnapshot } from '../types';
 import { type Marker, type ProfileAxis, type Tool, Viewer } from '../viewer';
 import { CompareTool } from './compare';
 import { renderHeader } from './header';
@@ -68,6 +68,7 @@ export class ViewerPanel {
   private rangeMode: RangeMode = 'minmax';
   private black = 0;
   private white = 1;
+  private scale: DisplayScale = 'linear';
   private hist = { useBox: false, log: false, range: 'full' as 'full' | 'clipped' };
   private headerFilter = '';
   private readout = h('div', { class: 'readout', 'aria-live': 'off' });
@@ -202,7 +203,7 @@ export class ViewerPanel {
     return {
       type: 'image',
       imageId: id,
-      range: { mode: this.rangeMode, black: this.black, white: this.white },
+      range: { mode: this.rangeMode, black: this.black, white: this.white, scale: this.scale },
       view,
       box: this.tab === 'box' || (this.tab === 'histogram' && this.hist.useBox) ? box : null,
       line: this.tab === 'profile' && p.index !== null ? { axis: p.axis, index: p.index } : null,
@@ -242,12 +243,32 @@ export class ViewerPanel {
         frames.map((f) => h('option', { value: f.meta.id, selected: f.meta.id === state.selectedId },
           `${f.meta.filter ? f.meta.filter + ' · ' : ''}${f.meta.fileName}`))));
     }
-    return h('label', { class: 'image-select' }, h('span', { class: 'sr-only' }, t('viewer.choose')),
-      h('select', {
-        onchange: (e: Event) => state.select((e.target as HTMLSelectElement).value),
+    // Back and forward go through the group of the image shown, e.g. all calibrated lights
+    const group = groups.find((g) => [...g.children].some((o) => (o as HTMLOptionElement).value === state.selectedId));
+    const ids = group ? [...group.children].map((o) => (o as HTMLOptionElement).value) : [];
+    const i = ids.indexOf(state.selectedId ?? '');
+    const stepButton = (d: number, text: string, label: Key) => h('button', {
+      type: 'button',
+      class: 'icon',
+      title: t(label),
+      'aria-label': t(label),
+      'data-step': String(d),
+      disabled: i < 0 || !ids[i + d],
+      onclick: () => {
+        state.select(ids[i + d]);
+        // The controls were rebuilt: keep the focus for pressing again
+        this.element.querySelector<HTMLButtonElement>(`.image-select button[data-step="${d}"]`)?.focus();
       },
-      state.selectedId ? null : h('option', { value: '', selected: true }, t('viewer.choose')),
-      groups));
+    }, text);
+    return h('div', { class: 'image-select' },
+      stepButton(-1, '‹', 'viewer.prev'),
+      h('label', {}, h('span', { class: 'sr-only' }, t('viewer.choose')),
+        h('select', {
+          onchange: (e: Event) => state.select((e.target as HTMLSelectElement).value),
+        },
+        state.selectedId ? null : h('option', { value: '', selected: true }, t('viewer.choose')),
+        groups)),
+      stepButton(1, '›', 'viewer.next'));
   }
 
   private toolbar(): HTMLElement {
@@ -269,11 +290,18 @@ export class ViewerPanel {
       onchange: (e: Event) => {
         this.rangeMode = (e.target as HTMLSelectElement).value as RangeMode;
         this.updateRange();
-        this.viewer.setRange(this.black, this.white);
+        this.viewer.setRange(this.black, this.white, this.scale);
         this.render();
       },
     }, (['minmax', 'p995', 'p99', 'manual'] as RangeMode[]).map((m) =>
       h('option', { value: m, selected: m === this.rangeMode }, t(`display.${m}` as Key))));
+    const scale = h('select', {
+      'aria-label': t('display.scale'),
+      onchange: (e: Event) => {
+        this.scale = (e.target as HTMLSelectElement).value as DisplayScale;
+        this.applyRange();
+      },
+    }, DISPLAY_SCALES.map((m) => h('option', { value: m, selected: m === this.scale }, t(`display.scale.${m}` as Key))));
 
     const zoom = h('div', { class: 'segmented', role: 'group', 'aria-label': t('zoom.label') },
         h('button', { type: 'button', title: t('zoom.fitTip'), onclick: () => this.viewer.fit() }, t('zoom.fit')),
@@ -289,6 +317,7 @@ export class ViewerPanel {
       h('label', { class: 'inline', title: t('display.tip') }, t('display.range'), ' ', select),
       numberInput(this.black, (v) => { this.black = v; this.applyRange(); }, 'display.black'),
       numberInput(this.white, (v) => { this.white = v; this.applyRange(); }, 'display.white'),
+      h('label', { class: 'inline', title: t('display.scaleTip') }, t('display.scale'), ' ', scale),
     );
   }
 
@@ -315,7 +344,7 @@ export class ViewerPanel {
   }
 
   private applyRange(): void {
-    this.viewer.setRange(this.black, this.white);
+    this.viewer.setRange(this.black, this.white, this.scale);
     if (this.tab === 'histogram') this.renderTool();
   }
 
@@ -344,7 +373,7 @@ export class ViewerPanel {
     if (data !== this.shownData) {
       this.shownData = data;
       this.updateRange();
-      this.viewer.setRange(this.black, this.white);
+      this.viewer.setRange(this.black, this.white, this.scale);
       this.viewer.setImage(v ? {
         width: v.image.width,
         height: v.image.height,

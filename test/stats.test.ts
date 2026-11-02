@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { histogram, median, sortedPercentile, stats, values } from '../src/stats';
+import { greyLevel, histogram, median, sortedPercentile, stats, values } from '../src/stats';
 
 describe('stats', () => {
   it('computes basic statistics and ignores NaN', () => {
@@ -32,5 +32,21 @@ describe('stats', () => {
   it('counts values in bins, including the top edge', () => {
     const h = histogram(Float32Array.from([0, 0.5, 1, 9.99, 10, 11]), 0, 10, 10);
     expect(Array.from(h.counts)).toEqual([2, 1, 0, 0, 0, 0, 0, 0, 0, 2]);
+  });
+
+  it('maps values to grey in each display scale', () => {
+    // Black and white stay black and white, values outside are clipped
+    for (const scale of ['linear', 'sqrt', 'log', 'asinh'] as const) {
+      expect(greyLevel(100, 100, 200, scale)).toBe(0);
+      expect(greyLevel(200, 100, 200, scale)).toBe(255);
+      expect(greyLevel(50, 100, 200, scale)).toBe(0);
+      expect(greyLevel(300, 100, 200, scale)).toBe(255);
+    }
+    expect(greyLevel(125, 100, 200)).toBe(64);
+    expect(greyLevel(125, 100, 200, 'sqrt')).toBe(128);
+    // The faint parts get brighter: log > sqrt > asinh > linear at 1 % of the range
+    const faint = (['linear', 'asinh', 'sqrt', 'log'] as const).map((s) => greyLevel(101, 100, 200, s));
+    expect(faint).toEqual([...faint].sort((a, b) => a - b));
+    expect(faint[3]).toBeGreaterThan(80);
   });
 });
