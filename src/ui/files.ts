@@ -10,6 +10,7 @@ import { runChecks } from '../checks';
 import { tasksFor } from '../tasks';
 import { KINDS, type FrameMeta, type Kind } from '../types';
 import { renderChecks } from './checks';
+import { renderComments } from './comments';
 import { renderTasks } from './task';
 
 type SortKey = 'fileName' | 'kind' | 'filter' | 'exposure' | 'dateObs';
@@ -35,7 +36,7 @@ export class FilesStep {
   render(): void {
     // Keep the table's scroll position when it is rebuilt
     const scrollTop = this.element.querySelector('.file-table .scroll')?.scrollTop ?? 0;
-    const parts = [this.loader(), this.importMessages(), this.profileBox(), this.summary(), this.checks(), this.table(),
+    const parts = [this.loader(), state.frames.length ? renderComments('step:files') : null, this.importMessages(), this.profileBox(), this.summary(), this.checks(), this.table(),
       state.frames.length ? renderTasks(tasksFor('files')) : null];
     this.element.replaceChildren(...parts.filter((p): p is HTMLElement => p !== null));
     const scroll = this.element.querySelector('.file-table .scroll');

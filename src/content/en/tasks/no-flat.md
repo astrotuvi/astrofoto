@@ -1,6 +1,6 @@
 # What if there were no flat?
 
-Switch off **"Divide by the flat"** and calibrate again. Look at one calibrated frame: compare the sky background in the centre and in the corners with box statistics. Then switch the flat back on and compare again.
+Switch off **"Divide by the flat"** and calibrate again. Look at one calibrated frame: compare the sky background in the centre and in the corners with box statistics. Save these settings as a version (the **"Compare"** tab below the image), e.g. named "without flat". Then switch the flat back on, calibrate again and blink the same frame between the two versions.
 
 What did you notice? Why is the flat needed if we want to compare the brightness of stars?
 

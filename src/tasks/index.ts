@@ -18,6 +18,8 @@ export interface TaskPart {
   tolerance?: { rel?: number; abs?: number };
   /** For keyword parts: is this keyword right? */
   check?: (value: string, ctx: MeasureContext) => boolean;
+  /** For keyword parts: the right keyword, shown in the answer key. */
+  answer?: (ctx: MeasureContext) => string | undefined;
   /** For choice parts: the options, and the id of the right one. */
   options?: { id: string; label: { et: string; en: string } }[];
   correct?: string;
@@ -41,6 +43,7 @@ function keywordPart(id: string, concept: 'kind' | 'filter' | 'exposure', et: st
     id,
     label: { et, en },
     type: 'keyword',
+    answer: (ctx) => ctx.headerKeyword(concept)?.key,
     check: (value, ctx) => {
       const used = ctx.headerKeyword(concept);
       const key = value.trim().toUpperCase();

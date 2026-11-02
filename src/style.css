@@ -305,8 +305,12 @@ table.stats th, table.stats td { padding: 0.2rem 0.8rem 0.2rem 0; border-bottom:
 .footer {
   padding: 1rem;
   color: var(--muted);
-  text-align: center;
   font-size: 0.85rem;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 0.4rem 1.5rem;
 }
 
 /* Steps and calibration */
@@ -497,3 +501,40 @@ details.channel-hist > summary { cursor: pointer; color: var(--muted); font-size
   .slider-row { grid-template-columns: 1fr 6rem auto; }
   .slider-row .slider-label { grid-column: 1 / -1; }
 }
+
+/* Comparison and versions */
+
+.compare-b { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; }
+.compare-b select { max-width: 16rem; }
+.compare-status { color: var(--muted); }
+.compare-status .shown { color: var(--text); font-weight: 600; }
+.versions { border-top: 1px solid var(--border); padding-top: 0.5rem; display: flex; flex-direction: column; gap: 0.4rem; }
+.versions h4 { margin: 0; }
+ul.version-list { margin: 0; padding-left: 1.2rem; display: flex; flex-direction: column; gap: 0.4rem; }
+ul.version-list .date { color: var(--muted); }
+form.version-save { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+form.version-save input { flex: 1; min-width: 10rem; }
+
+/* Mentor mode and comments */
+
+.badge.mentor { background: var(--warn-soft); color: var(--warn); }
+.answer-key { background: var(--warn-soft); color: var(--warn); border-radius: var(--radius); padding: 0 0.4rem; }
+.mentor-info { color: var(--warn); margin: 0; }
+.comments { display: flex; flex-direction: column; gap: 0.4rem; }
+.mentor-comment { background: var(--warn-soft); border-left: 4px solid var(--warn); border-radius: var(--radius); padding: 0.4rem 0.7rem; }
+.comment-head { display: flex; align-items: baseline; gap: 0.4rem; flex-wrap: wrap; }
+.comment-head .date { color: var(--muted); }
+.comment-text { white-space: pre-wrap; margin: 0.2rem 0 0; }
+form.comment-form { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: flex-end; }
+form.comment-form textarea {
+  flex: 1;
+  min-width: 12rem;
+  font: inherit;
+  color: inherit;
+  background: var(--panel);
+  border: 1px dashed var(--warn);
+  border-radius: var(--radius);
+  padding: 0.3rem;
+}
+ul.resume-comments { display: flex; flex-direction: column; gap: 0.4rem; }
+ul.resume-comments .date { color: var(--muted); }

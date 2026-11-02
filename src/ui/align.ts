@@ -12,6 +12,8 @@ import { type Frame, state } from '../state';
 import { tasksFor } from '../tasks';
 import type { AlignModel, AlignTransform, CombineMethod } from '../types';
 import type { Marker } from '../viewer';
+import { isMentor } from '../mentor';
+import { renderComments } from './comments';
 import { renderWhy } from './explain';
 import type { AlignSub } from './resume';
 import { renderTasks } from './task';
@@ -74,7 +76,7 @@ export class AlignStep {
 
   private unlocked(sub: Sub): boolean {
     if (sub === 'manual') return true;
-    if (sub === 'auto') return this.hasManual() || state.isDone('align');
+    if (sub === 'auto') return this.hasManual() || state.isDone('align') || isMentor();
     return state.isDone('align');
   }
 
@@ -113,6 +115,7 @@ export class AlignStep {
           onclick: () => this.go(s),
         }, `${i + 1}. ${t(SUB_LABEL[s])}`, done(s) ? ' ✓' : ''))),
       this.error ? h('p', { class: 'error', role: 'alert' }, this.error) : null,
+      renderComments(this.sub === 'stack' ? 'step:stack' : 'step:align'),
       body,
     ));
   }

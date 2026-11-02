@@ -8,7 +8,9 @@ import { darkScale, refreshAll, suggestedTrim } from '../masters';
 import { type MasterKind, masterId, state } from '../state';
 import { tasksFor } from '../tasks';
 import type { CombineMethod, Region, StepId } from '../types';
+import { isMentor } from '../mentor';
 import { renderChecks } from './checks';
+import { renderComments } from './comments';
 import { renderWhy } from './explain';
 import { renderTasks } from './task';
 import type { CalSub } from './resume';
@@ -56,7 +58,7 @@ export class CalibrationStep {
 
   private unlocked(sub: Sub): boolean {
     const i = SUBS.indexOf(sub);
-    return i === 0 || state.isDone(STEP[SUBS[i - 1]]);
+    return i === 0 || isMentor() || state.isDone(STEP[SUBS[i - 1]]);
   }
 
   /** Opens a part, e.g. from the resume page. */
@@ -89,6 +91,7 @@ export class CalibrationStep {
           onclick: () => this.go(s),
         }, `${i + 1}. ${t(SUB_LABEL[s])}`, state.isDone(STEP[s]) ? ' ✓' : ''))),
       this.error ? h('p', { class: 'error', role: 'alert' }, this.error) : null,
+      renderComments(`step:${STEP[this.sub]}`),
       body,
     ));
   }
@@ -189,7 +192,8 @@ export class CalibrationStep {
             }
           },
         }, done ? t('cal.trimUpdate') : t('cal.trimConfirm'))),
-      done ? this.trimCheck() : null,
+      // The mentor sees the app's suggestion before deciding
+      done || isMentor() ? this.trimCheck() : null,
       renderTasks(tasksFor('trim')),
       done ? this.next('bias') : null,
     );
@@ -199,14 +203,16 @@ export class CalibrationStep {
     const own = state.settings.trim;
     const auto = suggestedTrim();
     const profileTrim = state.profile?.trim;
+    const decided = own !== undefined;
     const lines: (HTMLElement | null)[] = [
-      h('p', {}, t('cal.yourChoice'), ' ', own ? regionText(own) : t('cal.noTrim')),
+      decided ? h('p', {}, t('cal.yourChoice'), ' ', own ? regionText(own) : t('cal.noTrim')) : null,
     ];
     if (auto !== undefined) {
       lines.push(h('p', {}, t('cal.appFound'), ' ', auto ? regionText(auto) : t('cal.noTrim')));
-      if (regionEquals(own, auto)) {
+      // In mentor mode the suggestion is shown before the student has decided
+      if (decided && regionEquals(own, auto)) {
         lines.push(h('p', { class: 'ok' }, t('cal.trimSame')));
-      } else {
+      } else if (decided) {
         lines.push(h('p', { class: 'warning' }, t('cal.trimDiffers')));
         lines.push(h('div', { class: 'buttons left' },
           h('button', {

@@ -18,6 +18,7 @@ import { finite, histogram, sortedPercentile } from '../stats';
 import { tasksFor } from '../tasks';
 import { createPlotCanvas, drawPlot } from '../tools/plot';
 import type { Channel, ChannelSettings, Composition } from '../types';
+import { renderComments } from './comments';
 import { renderWhy } from './explain';
 import type { ColorSub } from './resume';
 import { renderTasks } from './task';
@@ -133,6 +134,7 @@ export class ColorStep {
         }, `${i + 1}. ${t(SUB_LABEL[s])}`, s === 'export' && state.isDone('color') ? ' ✓' : ''))),
       this.error ? h('p', { class: 'error', role: 'alert' }, this.error) : null,
       this.message ? h('p', { class: 'ok', role: 'status' }, this.message) : null,
+      renderComments('step:color'),
       this.sub === 'compose' ? this.compose(c) : this.exports(c),
     ));
   }

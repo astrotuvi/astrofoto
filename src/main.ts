@@ -4,6 +4,7 @@ import './style.css';
 import { h } from './dom';
 import { getLang, type Key, type Lang, onLangChange, setLang, t } from './i18n';
 import './masters';
+import { isMentor, setMentor } from './mentor';
 import { state } from './state';
 import { AlignStep } from './ui/align';
 import { CalibrationStep } from './ui/calibrate';
@@ -42,6 +43,8 @@ let current: Step = 'files';
 let resumeWarning: string | undefined;
 
 function available(s: (typeof STEPS)[number]): boolean {
+  // The mentor can open any step once there are frames
+  if (isMentor() && s.ready && state.frames.length) return true;
   if (s.id === 'align') return state.isDone('calibrate') && state.calibrated.size > 0;
   if (s.id === 'color') return state.isDone('stack') && state.stacks.size > 0;
   return s.ready && (s.id === 'files' || state.frames.length > 0);
@@ -78,7 +81,8 @@ function open(target: Target): void {
 function renderChrome(): void {
   document.title = (state.info.title ? state.info.title + ' – ' : '') + t('app.title');
   top.replaceChildren(
-    h('div', { class: 'brand' }, h('strong', {}, t('app.title')), h('span', { class: 'tagline' }, t('app.tagline'))),
+    h('div', { class: 'brand' }, h('strong', {}, t('app.title')), h('span', { class: 'tagline' }, t('app.tagline')),
+      isMentor() ? h('span', { class: 'badge mentor' }, t('mentor.badge')) : null),
     h('nav', { class: 'steps', 'aria-label': t('step.nav') },
       h('ol', {},
         state.frames.length ? h('li', { class: current === 'resume' ? 'current' : '' },
@@ -114,7 +118,21 @@ function renderChrome(): void {
       }, l.toUpperCase()))),
     projectBar.element,
   );
-  footer.replaceChildren(t('app.footer', { version: __APP_VERSION__ }));
+  footer.replaceChildren(
+    h('span', {}, t('app.footer', { version: __APP_VERSION__ })),
+    h('label', { class: 'inline mentor-switch', title: t('mentor.tip') },
+      h('input', {
+        type: 'checkbox',
+        checked: isMentor(),
+        onchange: (e: Event) => {
+          const box = e.target as HTMLInputElement;
+          if (box.checked && !confirm(t('mentor.confirm'))) {
+            box.checked = false;
+            return;
+          }
+          setMentor(box.checked);
+        },
+      }), ' ', t('mentor.label')));
 }
 
 state.on((kind) => {
@@ -125,6 +143,7 @@ state.on((kind) => {
     else renderChrome();
   }
   if (kind === 'info') document.title = (state.info.title ? state.info.title + ' – ' : '') + t('app.title');
+  if (kind === 'mentor') rerender();
 });
 
 document.documentElement.lang = getLang();
@@ -136,7 +155,8 @@ document.getElementById('app')!.replaceChildren(
   footer,
 );
 
-onLangChange(() => {
+/** Rebuilds everything shown, e.g. after a language change or switching mentor mode. */
+function rerender(): void {
   renderChrome();
   projectBar.render();
   files.render();
@@ -145,4 +165,6 @@ onLangChange(() => {
   if (current === 'color') color.render();
   if (current === 'resume') show();
   viewer.render();
-});
+}
+
+onLangChange(rerender);

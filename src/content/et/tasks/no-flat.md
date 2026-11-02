@@ -1,6 +1,6 @@
 # Mis siis, kui tasaväljakaadrit poleks?
 
-Lülita **„Jaga tasaväljakaadriga“** välja ja kalibreeri uuesti. Vaata ühte kalibreeritud kaadrit: võrdle kasti statistikaga taeva tausta pildi keskel ja nurkades. Lülita tasaväljakaader siis tagasi sisse ja võrdle uuesti.
+Lülita **„Jaga tasaväljakaadriga“** välja ja kalibreeri uuesti. Vaata ühte kalibreeritud kaadrit: võrdle kasti statistikaga taeva tausta pildi keskel ja nurkades. Salvesta need seaded versioonina (pildi all vahekaart **„Võrdle“**), näiteks nimega „ilma tasaväljata“. Lülita tasaväljakaader siis tagasi sisse, kalibreeri uuesti ja võrdle sama kaadrit mõlemas versioonis vilgutades.
 
 Mida märkasid? Miks on tasaväljakaader vajalik, kui tahame tähtede heledust võrrelda?
 

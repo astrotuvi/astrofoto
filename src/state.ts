@@ -2,7 +2,7 @@
 
 import type { FitsImage } from './fits';
 import type { AutoResult } from './align';
-import type { CombineMethod, Composition, FrameMeta, InstrumentProfile, Kind, ProcessingSettings, Region, StepId } from './types';
+import type { CombineMethod, Composition, FrameMeta, InstrumentProfile, Kind, MentorComment, ProcessingSettings, Region, StepId, Version } from './types';
 
 export interface Frame {
   meta: FrameMeta;
@@ -54,6 +54,15 @@ export interface Stack {
   method: CombineMethod;
 }
 
+/** Images computed from the frames with one set of settings. */
+export interface Products {
+  masters: Map<string, Master>;
+  calibrated: Map<string, FitsImage>;
+  aligned: Map<string, FitsImage>;
+  alignCrop: Region | null;
+  stacks: Map<string, Stack>;
+}
+
 export interface StepState {
   done: boolean;
   /** The student took the app's suggestion instead of their own choice. */
@@ -67,10 +76,10 @@ export interface Answer {
 }
 
 export type ChangeKind = 'frames' | 'selection' | 'profile' | 'settings' | 'masters' | 'calibrated' | 'aligned' | 'stacks'
-  | 'auto' | 'compositions' | 'steps' | 'answers' | 'overlay' | 'info' | 'log' | 'saved';
+  | 'auto' | 'compositions' | 'versions' | 'comments' | 'mentor' | 'steps' | 'answers' | 'overlay' | 'info' | 'log' | 'saved';
 
 /** Changes that do not need saving. */
-const TRANSIENT = new Set<ChangeKind>(['selection', 'overlay', 'saved', 'masters', 'calibrated', 'aligned', 'stacks', 'auto']);
+const TRANSIENT = new Set<ChangeKind>(['selection', 'overlay', 'saved', 'masters', 'calibrated', 'aligned', 'stacks', 'auto', 'mentor']);
 
 export function masterId(kind: MasterKind, filter = ''): string {
   return kind === 'flat' ? `master:flat:${filter}` : `master:${kind}`;
@@ -108,6 +117,12 @@ class State {
   auto = new Map<string, AutoResult | null>();
   /** Colour images made from the stacks. */
   compositions: Composition[] = [];
+  /** Saved settings for comparisons. */
+  versions: Version[] = [];
+  /** Images computed with a version's settings, keyed by version id (see versions.ts). */
+  versionProducts = new Map<string, Products>();
+  /** Mentor comments, keyed by 'step:<id>' or 'task:<id>'. */
+  comments: Record<string, MentorComment[]> = {};
   info: ProjectInfo = newInfo();
   log: LogEntry[] = [];
   /** Changed since the last save. */
@@ -121,6 +136,7 @@ class State {
   /** A trim region being edited, drawn on raw frames before it is confirmed. */
   trimPreview: Region | null = null;
   private listeners = new Set<(kind: ChangeKind) => void>();
+  private muted = 0;
   private nextId = 1;
 
   newId(): string {
@@ -143,16 +159,20 @@ class State {
 
   /**
    * The image shown for an id: a frame, a master ('master:…'), a calibrated light ('cal:<frame id>'),
-   * an aligned light ('aligned:<frame id>') or a stack ('stack:<filter>'). Colour images
+   * an aligned light ('aligned:<frame id>') or a stack ('stack:<filter>'). 'v:<version id>:<id>'
+   * is the same image computed with a saved version's settings. Colour images
    * ('color:<composition id>') are not single images; see composition().
    */
   viewable(id: string | null): { title: string; image: FitsImage; isMaster: boolean } | undefined {
     if (!id) return undefined;
-    const m = this.masters.get(id) ?? this.stacks.get(id);
-    if (m) return { title: id, image: m.image, isMaster: true };
-    // Calibrated and aligned frames are trimmed like the masters
-    const derived = id.startsWith('cal:') ? this.calibrated.get(id.slice(4))
-      : id.startsWith('aligned:') ? this.aligned.get(id.slice(8)) : undefined;
+    if (id.startsWith('v:')) {
+      const [, vid, ...rest] = id.split(':');
+      const p = this.versionProducts.get(vid);
+      const image = p && productImage(p, rest.join(':'));
+      return image ? { title: id, image, isMaster: true } : undefined;
+    }
+    // Derived images are trimmed like the masters
+    const derived = productImage(this, id);
     if (derived) return { title: id, image: derived, isMaster: true };
     if (id.includes(':')) return undefined;
     const f = this.frame(id);
@@ -161,6 +181,48 @@ class State {
 
   composition(id: string | null): Composition | undefined {
     return id?.startsWith('color:') ? this.compositions.find((c) => c.id === id.slice(6)) : undefined;
+  }
+
+  /** Runs `fn` without change events, e.g. while computing a version's images. */
+  quietly(fn: () => void): void {
+    this.muted++;
+    try {
+      fn();
+    } finally {
+      this.muted--;
+    }
+  }
+
+  addVersion(v: Version): void {
+    this.versions.push(v);
+    this.emit('versions');
+  }
+
+  updateVersion(id: string, patch: Partial<Version>): void {
+    const v = this.versions.find((x) => x.id === id);
+    if (!v) return;
+    Object.assign(v, patch);
+    this.emit('versions');
+  }
+
+  removeVersion(id: string): void {
+    this.versions = this.versions.filter((v) => v.id !== id);
+    this.versionProducts.delete(id);
+    if (this.selectedId?.startsWith(`v:${id}:`)) this.select(null);
+    this.emit('versions');
+  }
+
+  addComment(key: string, text: string): void {
+    (this.comments[key] ??= []).push({ text, date: new Date().toISOString() });
+    this.emit('comments');
+  }
+
+  removeComment(key: string, index: number): void {
+    const list = this.comments[key];
+    if (!list) return;
+    list.splice(index, 1);
+    if (!list.length) delete this.comments[key];
+    this.emit('comments');
   }
 
   addComposition(c: Composition): void {
@@ -214,12 +276,15 @@ class State {
     this.stacks.clear();
     this.auto.clear();
     this.compositions = [];
+    this.versions = [];
+    this.versionProducts.clear();
+    this.comments = {};
     this.info = newInfo();
     this.log = [];
     this.trimPreview = null;
     this.nextId = 1;
     this.select(null);
-    for (const k of ['frames', 'profile', 'settings', 'masters', 'calibrated', 'aligned', 'stacks', 'auto', 'compositions', 'steps', 'answers', 'info', 'log'] as const) this.emit(k);
+    for (const k of ['frames', 'profile', 'settings', 'masters', 'calibrated', 'aligned', 'stacks', 'auto', 'compositions', 'versions', 'comments', 'steps', 'answers', 'info', 'log'] as const) this.emit(k);
     this.markSaved();
   }
 
@@ -343,6 +408,10 @@ class State {
     for (const c of this.calibrated.values()) sum += c.data.byteLength;
     for (const c of this.aligned.values()) sum += c.data.byteLength;
     for (const c of this.stacks.values()) sum += c.image.data.byteLength;
+    for (const p of this.versionProducts.values()) {
+      for (const m of [...p.masters.values(), ...p.stacks.values()]) sum += m.image.data.byteLength;
+      for (const c of [...p.calibrated.values(), ...p.aligned.values()]) sum += c.data.byteLength;
+    }
     return sum;
   }
 
@@ -351,9 +420,16 @@ class State {
   }
 
   emit(kind: ChangeKind): void {
+    if (this.muted) return;
     if (!TRANSIENT.has(kind)) this.dirty = true;
     for (const fn of this.listeners) fn(kind);
   }
+}
+
+/** A master, stack, calibrated or aligned image of a set of products. */
+function productImage(p: Products, id: string): FitsImage | undefined {
+  return p.masters.get(id)?.image ?? p.stacks.get(id)?.image
+    ?? (id.startsWith('cal:') ? p.calibrated.get(id.slice(4)) : id.startsWith('aligned:') ? p.aligned.get(id.slice(8)) : undefined);
 }
 
 function newInfo(): ProjectInfo {

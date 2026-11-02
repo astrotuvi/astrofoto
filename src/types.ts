@@ -106,3 +106,17 @@ export interface Composition {
   channels: Record<Channel, ChannelSettings>;
   stretch: Stretch;
 }
+
+/** Saved processing settings, e.g. "ilma tasaväljata", for "what if" comparisons (§4.4). */
+export interface Version {
+  id: string;
+  name: string;
+  settings: ProcessingSettings;
+  created: string;
+}
+
+/** A mentor's comment on a step ('step:<id>') or a task ('task:<id>'). */
+export interface MentorComment {
+  text: string;
+  date: string;
+}

@@ -4,6 +4,7 @@ import { taskContent } from '../content';
 import { h } from '../dom';
 import { fmt, getLang, type Key, t } from '../i18n';
 import { term, type TermId } from '../i18n/glossary';
+import { formatCommentDate } from './comments';
 import { state } from '../state';
 import { isSolved, TASKS, unmet } from '../tasks';
 import { MeasureContext } from '../tasks/context';
@@ -63,6 +64,14 @@ export function renderResume(go: (target: Target) => void, warning?: string): HT
   const next = WORK.find((w) => !stepDone(w.id));
   const tasks = TASKS.filter((task) => !unmet(task, ctx));
   const open = tasks.filter((task) => !isSolved(task));
+  // Mentor comments, newest first, with where they were written
+  const comments = Object.entries(state.comments).flatMap(([key, list]) => {
+    const [kind, id] = key.split(':');
+    const task = kind === 'task' ? TASKS.find((x) => x.id === id) : undefined;
+    const where = task ? taskContent(task.id, task.params?.(ctx)).title : t(WORK.find((w) => w.id === id)?.label ?? 'step.files');
+    const target = targetFor(task ? task.step : id as StepId);
+    return list.map((c) => ({ ...c, where, target }));
+  }).sort((a, b) => b.date.localeCompare(a.date));
   const input = (key: 'title' | 'student', label: Key) =>
     h('label', { class: 'field' }, t(label),
       h('input', {
@@ -79,6 +88,12 @@ export function renderResume(go: (target: Target) => void, warning?: string): HT
       input('title', 'resume.projectTitle'),
       input('student', 'resume.student'),
       h('p', { class: 'hint' }, t('resume.dates', { created: formatDate(state.info.created), saved: formatDate(state.info.lastSaved) }))),
+    comments.length ? h('section', { class: 'phase' },
+      h('h3', {}, t('resume.comments')),
+      h('ul', { class: 'resume-comments' }, comments.map((c) => h('li', {},
+        h('button', { type: 'button', class: 'link', onclick: () => go(c.target) }, c.where),
+        ' ', h('span', { class: 'date' }, formatCommentDate(c.date)),
+        h('p', { class: 'comment-text' }, c.text))))) : null,
     h('section', { class: 'phase' },
       h('h3', {}, t('resume.steps')),
       h('ol', { class: 'progress' }, WORK.map((w) => h('li', { class: stepDone(w.id) ? 'done' : '' },

@@ -2,7 +2,7 @@
 
 A browser app for reducing monochrome CCD images in FITS format and combining them into colour images. It is built as a learning tool for an after-school astronomy project.
 
-Status: milestones 1–5 (viewer, master frames, calibration and project file, alignment and stacking, colour and export) implemented. Last updated 2026-11-02.
+Status: milestones 1–6 (viewer, master frames, calibration and project file, alignment and stacking, colour and export, versions and mentor mode) implemented. Last updated 2026-11-02.
 
 ---
 
@@ -281,7 +281,7 @@ The first image is shown **linear and unstretched**, so it looks nearly black. T
 | Histogram | Linear or logarithmic axis |
 | Star profile | Radial profile and FWHM (the student estimates it by hand first, then the app computes it) |
 | Distance | In pixels and arcseconds (from `FOCALLEN` and `XPIXSZ`) |
-| Compare | Blink or split view between any two images or versions |
+| Compare | Blink or split view between the image shown (A) and another image or the same image in a saved version (B), in the same display range |
 | Saturation overlay | Pixels above the saturation level shown in red |
 
 Each statistic has a short tooltip, e.g. *standardhälve: how much the values spread around the mean*.
@@ -290,8 +290,10 @@ Each statistic has a short tooltip, e.g. *standardhälve: how much the values sp
 
 - Each calibration step can be switched on or off, and the median vs mean choice can be changed.
 - The result can be saved as a **named version**, e.g. "ilma tasaväljata" (without flat).
-- Versions can be compared side by side or by blinking.
-- Tasks can ask for an experiment directly (§4.5).
+- Versions can be compared side by side (a split line) or by blinking, in the viewer's **"Võrdle"** tab (compare).
+- Tasks can ask for an experiment directly (§4.5); the "no flat" task asks for a version and blinking.
+
+A version stores the processing settings. When compared, its images are recomputed from the frames with its calibration and stacking choices (trim, bias/dark/flat on or off, combine methods), but with the **current** alignment and steps done, so a version saved during calibration can be compared after stacking too. The version list says how each version differs from the current settings. Images are kept for the two most recently compared versions; for the reference data one version takes about 0.9 s and 50 MB. Versions are saved in the project file; their images are not.
 
 ### 4.5 Tasks
 
@@ -385,11 +387,12 @@ The report uses only structures that survive copying into Google Docs and Word w
 
 ### 4.7 Mentor mode
 
-A switch in settings, saved in the browser (`localStorage`), not in the project file. It:
-- shows the answer key for the tasks;
-- allows opening any step regardless of the order;
-- shows automatic suggestions immediately;
-- lets the mentor write **comments** on each step or task. The comments are saved in the project, and the student sees them the next time the project is opened.
+A switch in the footer (with a confirmation), saved in the browser (`localStorage`), not in the project file. A badge in the top bar shows when it is on. It:
+- shows the answer key for the tasks: the expected values with their tolerance, the right choice or keyword, and the student's wrong attempts and hints opened;
+- shows all hint levels at once, without counting them as the student's;
+- allows opening any step and part regardless of the order (stacking still needs a confirmed alignment);
+- shows automatic suggestions immediately (the trim suggestion, the automatic alignment check);
+- lets the mentor write **comments** on each step or task. The comments are saved in the project (`mentorComments`, keyed `step:<id>` or `task:<id>`). The student sees them at the top of the step or below the task, and on the "Kus ma pooleli jäin" page, which opens with the project.
 
 The answer key is part of the app code, so a determined student could find it. For this group that is acceptable. Hiding it properly would need a server.
 
@@ -588,7 +591,7 @@ interface Project {
   steps: Partial<Record<StepId, { done: boolean; acceptedAuto?: boolean }>>;
   answers: Record<string, { value: string; correct?: boolean; attempts: number }>;  // key: <taskId>.<partId>
   hintsUsed: Record<string, number>;                    // hint levels opened, per task
-  mentorComments: Record<string, { text: string; date: string }[]>;
+  mentorComments: Record<string, { text: string; date: string }[]>;  // key: step:<id> or task:<id>
   report: {
     sections: Partial<Record<'title' | 'data' | 'processing' | 'tasks' | 'colour' | 'mentorComments', boolean>>;
     items: ReportItem[];         // in report order
@@ -644,6 +647,8 @@ src/
                        wavelength order
   export.ts            FITS files of masters and stacks (names, zip), PNG of a colour image
   viewer.ts            canvas display, zoom/pan, overlays, click handling
+  versions.ts          named versions: save, compute their images, differences
+  mentor.ts            mentor mode switch (localStorage)
   project.ts           .astroproj format: serialize, open, migrate
   fileio.ts            File System Access with download / <input> fallback
   log.ts               processing log
@@ -657,7 +662,7 @@ src/
   offline.ts           service worker registration, update prompt
   tools/
     plot.ts            line/step plots with labelled axes
-    profile.ts  boxstats.ts  histogram.ts  starprofile.ts  distance.ts  compare.ts
+    profile.ts  boxstats.ts  histogram.ts  starprofile.ts  distance.ts
   tasks/
     index.ts           task definitions, answer checking
     context.ts         values computed from the student's data (MeasureContext)
@@ -672,6 +677,8 @@ src/
   ui/
     files.ts  profile.ts  calibrate.ts  align.ts  color.ts  resume.ts  glossary.ts  settings.ts
     viewerpanel.ts     viewer with toolbar, readout and tool tabs
+    compare.ts         "Võrdle" tab: blink/split, versions list
+    comments.ts        mentor comments on steps and tasks
     header.ts          FITS header viewer
     explain.ts         "Miks?" / "Uuri lähemalt" panel
     task.ts            task with answer fields and hint levels

@@ -24,9 +24,19 @@ export interface Marker {
   style?: 'star' | 'ghost';
 }
 
+/** A second image of the same size, shown instead of the first (blink) or to the right of a line (split). */
+export interface Compare {
+  image: ViewImage;
+  mode: 'blink' | 'split';
+  /** Blink: true while the second image is shown. */
+  showSecond: boolean;
+  /** Split: where the line is, 0–1 of the image width. */
+  at: number;
+}
+
 export interface ViewerEvents {
-  /** Pointer over the image; 0-based file coordinates, or null when outside. */
-  hover?: (p: { x: number; y: number; value: number } | null) => void;
+  /** Pointer over the image; 0-based file coordinates, or null when outside. `second` = from the compared image. */
+  hover?: (p: { x: number; y: number; value: number; second?: boolean } | null) => void;
   profile?: (axis: ProfileAxis, index: number) => void;
   box?: (region: Region | null) => void;
   zoom?: (scale: number) => void;
@@ -43,6 +53,8 @@ export class Viewer {
   private ctx: CanvasRenderingContext2D;
   private bitmap = document.createElement('canvas');
   private image: ViewImage | null = null;
+  private second = document.createElement('canvas');
+  private compare: Compare | null = null;
   private black = 0;
   private white = 1;
   private scale = 1;
@@ -75,6 +87,7 @@ export class Viewer {
   setImage(image: ViewImage | null): void {
     const sameSize = image && this.image && image.width === this.image.width && image.height === this.image.height;
     this.image = image;
+    if (this.compare && (!image || image.width !== this.compare.image.width || image.height !== this.compare.image.height)) this.compare = null;
     if (!sameSize) {
       this.box = null;
       this.profileIndex = null;
@@ -89,6 +102,15 @@ export class Viewer {
     this.black = black;
     this.white = white;
     this.renderBitmap();
+    if (this.compare) this.renderInto(this.second, this.compare.image);
+    this.draw();
+  }
+
+  /** Compares with a second image of the same size, in the same display range; null ends it. */
+  setCompare(c: Compare | null): void {
+    const newImage = c?.image !== this.compare?.image;
+    this.compare = c && this.image && c.image.width === this.image.width && c.image.height === this.image.height ? c : null;
+    if (this.compare && newImage) this.renderInto(this.second, this.compare.image);
     this.draw();
   }
 
@@ -178,11 +200,13 @@ export class Viewer {
   }
 
   private renderBitmap(): void {
-    const img = this.image;
-    if (!img) return;
-    this.bitmap.width = img.width;
-    this.bitmap.height = img.height;
-    const bctx = this.bitmap.getContext('2d')!;
+    if (this.image) this.renderInto(this.bitmap, this.image);
+  }
+
+  private renderInto(bitmap: HTMLCanvasElement, img: ViewImage): void {
+    bitmap.width = img.width;
+    bitmap.height = img.height;
+    const bctx = bitmap.getContext('2d')!;
     const out = bctx.createImageData(img.width, img.height);
     const px = out.data;
     if (img.rgba) {
@@ -252,7 +276,9 @@ export class Viewer {
     if (!this.image) return;
     const { cx, cy } = this.canvasPoint(e);
     const p = this.toImage(cx, cy);
-    this.events.hover?.(this.inside(p) ? { ...p, value: this.image.data[p.y * this.image.width + p.x] } : null);
+    const second = this.showsSecond(p.x);
+    const data = second ? this.compare!.image.data : this.image.data;
+    this.events.hover?.(this.inside(p) ? { ...p, value: data[p.y * this.image.width + p.x], second: this.compare ? second : undefined } : null);
 
     const d = this.drag;
     if (!d) return;
@@ -298,6 +324,13 @@ export class Viewer {
     this.zoomTo(this.scale * Math.exp(-e.deltaY * factor), cx, cy);
   }
 
+  /** Whether the compared image is shown at this column. */
+  private showsSecond(x: number): boolean {
+    const c = this.compare;
+    if (!c || !this.image) return false;
+    return c.mode === 'blink' ? c.showSecond : x >= c.at * this.image.width;
+  }
+
   private draw(): void {
     const ctx = this.ctx;
     const { width, height } = this.canvas;
@@ -308,7 +341,27 @@ export class Viewer {
     if (!img) return;
 
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(this.bitmap, this.offsetX, this.offsetY, img.width * this.scale, img.height * this.scale);
+    const c = this.compare;
+    const w = img.width * this.scale;
+    const hgt = img.height * this.scale;
+    ctx.drawImage(c?.mode === 'blink' && c.showSecond ? this.second : this.bitmap, this.offsetX, this.offsetY, w, hgt);
+    if (c?.mode === 'split') {
+      const x = this.offsetX + Math.round(c.at * img.width) * this.scale;
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(x, this.offsetY, this.offsetX + w - x, hgt);
+      ctx.clip();
+      ctx.drawImage(this.second, this.offsetX, this.offsetY, w, hgt);
+      ctx.restore();
+      ctx.save();
+      ctx.strokeStyle = '#ffd400';
+      ctx.lineWidth = 2 * (window.devicePixelRatio || 1);
+      ctx.beginPath();
+      ctx.moveTo(x, this.offsetY);
+      ctx.lineTo(x, this.offsetY + hgt);
+      ctx.stroke();
+      ctx.restore();
+    }
 
     const dpr = window.devicePixelRatio || 1;
     ctx.lineWidth = 1.5 * dpr;

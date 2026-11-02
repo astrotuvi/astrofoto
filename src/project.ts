@@ -8,7 +8,7 @@ import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import { readFits } from './fits';
 import { describeFrame } from './instrument/profile';
 import { type Answer, type Frame, type LogEntry, type ProjectInfo, type StepState, defaultSettings, state } from './state';
-import type { Composition, FrameMeta, InstrumentProfile, ProcessingSettings, StepId } from './types';
+import type { Composition, FrameMeta, InstrumentProfile, MentorComment, ProcessingSettings, StepId, Version } from './types';
 
 declare const __APP_VERSION__: string;
 
@@ -25,13 +25,14 @@ interface ProjectJson {
   frames: SavedFrame[];
   settings: ProcessingSettings;
   compositions: Composition[];
+  versions: Version[];
   steps: Partial<Record<StepId, StepState>>;
   answers: Record<string, Answer>;
   hintsUsed: Record<string, number>;
   log: LogEntry[];
-  // Reserved for later milestones, kept so older files stay readable
+  mentorComments: Record<string, MentorComment[]>;
+  // Reserved for a later milestone, kept so older files stay readable
   taskSettings: Record<string, Record<string, number | string>>;
-  mentorComments: Record<string, { text: string; date: string }[]>;
 }
 
 export class ProjectError extends Error {
@@ -68,12 +69,13 @@ export function serialize(): Uint8Array {
     }),
     settings: state.settings,
     compositions: state.compositions,
+    versions: state.versions,
     steps: state.steps,
     answers: state.answers,
     hintsUsed: state.hintsUsed,
     log: state.log,
+    mentorComments: state.comments,
     taskSettings: {},
-    mentorComments: {},
   };
   const files: Record<string, Uint8Array | [Uint8Array, { level: 0 | 1 | 6 }]> = {
     'project.json': strToU8(JSON.stringify(json, null, 2)),
@@ -100,6 +102,12 @@ function migrate(json: ProjectJson): ProjectJson {
     },
     // Projects from 0.4 and earlier have no colour images
     compositions: json.compositions ?? [],
+    // and 0.5 and earlier no versions or comments
+    versions: (json.versions ?? []).map((v) => ({
+      ...v,
+      settings: { ...defaultSettings(), ...v.settings, combine: { ...defaultSettings().combine, ...v.settings.combine } },
+    })),
+    mentorComments: json.mentorComments ?? {},
     hintsUsed: json.hintsUsed ?? {},
     log: json.log ?? [],
     steps: json.steps ?? {},
@@ -140,13 +148,15 @@ export function open(bytes: Uint8Array): OpenResult {
   if (json.profile) state.setProfile(json.profile);
   state.settings = json.settings;
   state.compositions = json.compositions;
+  state.versions = json.versions;
+  state.comments = json.mentorComments;
   state.steps = json.steps;
   state.answers = json.answers;
   state.hintsUsed = json.hintsUsed;
   state.log = json.log;
   // Adding the frames rebuilds the masters and calibrated frames (see masters.ts)
   state.addFrames(frames);
-  for (const k of ['info', 'settings', 'compositions', 'steps', 'answers', 'log'] as const) state.emit(k);
+  for (const k of ['info', 'settings', 'compositions', 'versions', 'comments', 'steps', 'answers', 'log'] as const) state.emit(k);
   state.markSaved();
 
   return compareVersions(json.appVersion, __APP_VERSION__) > 0 ? { newerApp: json.appVersion } : {};

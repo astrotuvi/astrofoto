@@ -2,10 +2,14 @@
 
 import { taskContent } from '../content';
 import { h } from '../dom';
-import { getLang, type Key, t } from '../i18n';
+import { fmt, getLang, type Key, t } from '../i18n';
+import { isMentor } from '../mentor';
 import { state } from '../state';
 import { MeasureContext } from '../tasks/context';
-import { attempts, type CheckResult, checkPart, FULL_HINT_AFTER, HINT_LEVELS, isSolved, partLabel, type Task, unmet } from '../tasks';
+import {
+  attempts, type CheckResult, checkPart, FULL_HINT_AFTER, HINT_LEVELS, isSolved, partLabel, type Task, type TaskPart, unmet,
+} from '../tasks';
+import { renderComments } from './comments';
 
 function html(content: string): HTMLDivElement {
   const div = h('div', { class: 'md' });
@@ -19,6 +23,21 @@ export function renderTasks(tasks: Task[]): HTMLElement | null {
   return h('section', { class: 'tasks' },
     h('h3', {}, t('task.heading')),
     tasks.map((task, i) => renderTask(task, i + 1, ctx)));
+}
+
+/** The expected answer for the mentor, e.g. "0,4469 ″/px (±3 %)"; null for free text. */
+export function answerKey(p: TaskPart, ctx: MeasureContext): string | null {
+  if (p.type === 'text') return null;
+  if (p.type === 'choice') return p.options?.find((o) => o.id === p.correct)?.label[getLang()] ?? null;
+  if (p.type === 'keyword') return p.answer?.(ctx) ?? t('task.keyUnavailable');
+  const e = p.expected?.(ctx);
+  if (e === undefined || (Array.isArray(e) && !e.length)) return t('task.keyUnavailable');
+  const values = (Array.isArray(e) ? e : [e]).map((v) => fmt(v, 4)).join(' / ');
+  const tol = [
+    p.tolerance?.rel ? `±${fmt(p.tolerance.rel * 100, 1)} %` : '',
+    p.tolerance?.abs ? `±${fmt(p.tolerance.abs, 3)}${p.unit ? ' ' + p.unit : ''}` : '',
+  ].filter(Boolean).join(t('task.keyOr'));
+  return `${values}${p.unit ? ' ' + p.unit : ''}${tol ? ` (${tol})` : ''}`;
 }
 
 function renderTask(task: Task, n: number, ctx: MeasureContext): HTMLElement {
@@ -55,9 +74,11 @@ function renderTask(task: Task, n: number, ctx: MeasureContext): HTMLElement {
     const result = h('span', { class: 'result', 'aria-live': 'polite' });
     if (saved) showResult(result, p.type === 'text' ? (saved.value ? 'saved' : 'empty') : saved.correct ? 'correct' : 'wrong');
     results.set(p.id, result);
+    const expected = isMentor() ? answerKey(p, ctx) : null;
     return h('div', { class: 'part' },
       h('label', {}, partLabel(p), p.type === 'text' ? h('br') : ' ', input, p.unit ? h('span', { class: 'unit' }, ' ', p.unit) : null),
-      result);
+      result,
+      expected ? h('span', { class: 'answer-key' }, t('task.key', { value: expected })) : null);
   });
 
   const check = () => {
@@ -83,6 +104,11 @@ function renderTask(task: Task, n: number, ctx: MeasureContext): HTMLElement {
   const used = () => state.hintsUsed[task.id] ?? 0;
   const hintArea = h('div', { class: 'hints' });
   const hintButtons = (): HTMLElement[] => {
+    // The mentor sees all hints, without counting them as the student's
+    if (isMentor()) {
+      return text.hints.map((hint, i) => h('div', { class: 'hint-text' },
+        h('strong', {}, t(i + 1 === HINT_LEVELS ? 'task.fullHint' : 'task.hintN', { n: String(i + 1) })), html(hint)));
+    }
     const out: HTMLElement[] = [];
     for (let level = 1; level <= Math.min(used(), text.hints.length); level++) {
       out.push(h('div', { class: 'hint-text' }, h('strong', {}, t(level === HINT_LEVELS ? 'task.fullHint' : 'task.hintN', { n: String(level) })), html(text.hints[level - 1])));
@@ -116,7 +142,9 @@ function renderTask(task: Task, n: number, ctx: MeasureContext): HTMLElement {
         check();
       },
     }, parts, h('button', { type: 'submit' }, t('task.check'))),
+    isMentor() ? h('p', { class: 'mentor-info' }, t('task.studentRecord', { attempts: attempts(task), hints: used() })) : null,
     hintArea,
+    renderComments(`task:${task.id}`),
   );
 }
 

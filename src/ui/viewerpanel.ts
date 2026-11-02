@@ -13,9 +13,10 @@ import { type HistogramChange, renderHistogram } from '../tools/histogram';
 import { renderProfile } from '../tools/profile';
 import { KINDS } from '../types';
 import { type Marker, type ProfileAxis, type Tool, Viewer } from '../viewer';
+import { CompareTool } from './compare';
 import { renderHeader } from './header';
 
-export type Tab = 'pixel' | 'profile' | 'box' | 'histogram' | 'header';
+export type Tab = 'pixel' | 'profile' | 'box' | 'histogram' | 'compare' | 'header';
 type RangeMode = 'minmax' | 'p995' | 'p99' | 'manual';
 
 const TABS: { id: Tab; label: Key; tool: Tool }[] = [
@@ -23,6 +24,7 @@ const TABS: { id: Tab; label: Key; tool: Tool }[] = [
   { id: 'profile', label: 'tab.profile', tool: 'profile' },
   { id: 'box', label: 'tab.box', tool: 'box' },
   { id: 'histogram', label: 'tab.histogram', tool: 'pixel' },
+  { id: 'compare', label: 'tab.compare', tool: 'pixel' },
   { id: 'header', label: 'tab.header', tool: 'pixel' },
 ];
 
@@ -76,6 +78,7 @@ export class ViewerPanel {
   private shownData: Float32Array | null = null;
   private picker: Picker | null = null;
   private colorPending = false;
+  private compare: CompareTool;
 
   constructor() {
     this.viewer = new Viewer({
@@ -90,6 +93,7 @@ export class ViewerPanel {
         if (state.selectedId) this.picker?.pick?.(state.selectedId, p.x, p.y);
       },
     });
+    this.compare = new CompareTool(this.viewer);
     state.on((kind) => {
       if (kind === 'selection' || kind === 'frames' || kind === 'masters' || kind === 'calibrated' || kind === 'aligned' || kind === 'stacks') this.showImage();
       if (kind === 'overlay' || kind === 'settings') this.updateOverlay();
@@ -162,6 +166,7 @@ export class ViewerPanel {
       this.toolArea,
     );
     this.viewer.setTool(this.tool());
+    this.compare.setActive(this.shownTab() === 'compare');
     this.showReadout(null);
     this.renderTool();
   }
@@ -313,9 +318,10 @@ export class ViewerPanel {
     }
     this.updateOverlay();
     this.render();
+    this.compare.apply();
   }
 
-  private showReadout(p: { x: number; y: number; value: number } | null): void {
+  private showReadout(p: { x: number; y: number; value: number; second?: boolean } | null): void {
     const c = state.composition(state.selectedId);
     if (c && p) {
       // The stack values behind each channel
@@ -332,7 +338,8 @@ export class ViewerPanel {
     } else if (!p) {
       this.readout.textContent = t('viewer.hover');
     } else {
-      this.readout.textContent = t('viewer.readout', { x: String(p.x + 1), y: String(p.y + 1), v: fmt(p.value, 3) });
+      const text = t('viewer.readout', { x: String(p.x + 1), y: String(p.y + 1), v: fmt(p.value, 3) });
+      this.readout.textContent = p.second === undefined ? text : `${p.second ? 'B' : 'A'} · ${text}`;
     }
   }
 
@@ -381,6 +388,9 @@ export class ViewerPanel {
           Object.assign(this.hist, c);
           this.renderTool();
         });
+        break;
+      case 'compare':
+        content = this.compare.render();
         break;
       case 'header':
         content = renderHeader(v.image.cards, state.profile, this.headerFilter, (q) => (this.headerFilter = q));
