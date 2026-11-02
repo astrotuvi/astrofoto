@@ -2,7 +2,7 @@
 
 import { taskContent } from '../content';
 import { h } from '../dom';
-import { type Key, t } from '../i18n';
+import { getLang, type Key, t } from '../i18n';
 import { state } from '../state';
 import { MeasureContext } from '../tasks/context';
 import { attempts, type CheckResult, checkPart, FULL_HINT_AFTER, HINT_LEVELS, isSolved, partLabel, type Task, unmet } from '../tasks';
@@ -31,7 +31,7 @@ function renderTask(task: Task, n: number, ctx: MeasureContext): HTMLElement {
   }
 
   const results = new Map<string, HTMLElement>();
-  const inputs = new Map<string, HTMLInputElement | HTMLTextAreaElement>();
+  const inputs = new Map<string, HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>();
   const allCorrect = isSolved(task);
 
   const parts = task.parts.map((p) => {
@@ -39,7 +39,11 @@ function renderTask(task: Task, n: number, ctx: MeasureContext): HTMLElement {
     const saved = state.answers[key];
     const input = p.type === 'text'
       ? h('textarea', { rows: 2, value: saved?.value ?? '', 'aria-label': partLabel(p) })
-      : h('input', {
+      : p.type === 'choice'
+        ? h('select', { 'aria-label': partLabel(p) },
+            h('option', { value: '', selected: !saved?.value }, t('task.choose')),
+            (p.options ?? []).map((o) => h('option', { value: o.id, selected: saved?.value === o.id }, o.label[getLang()])))
+        : h('input', {
           type: 'text',
           inputmode: p.type === 'number' ? 'decimal' : 'text',
           autocapitalize: p.type === 'keyword' ? 'characters' : undefined,

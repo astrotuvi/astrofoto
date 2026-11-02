@@ -2,7 +2,9 @@
 
 import { clippedMean, DEFAULT_SIGMA, trimPlane } from '../calibrate';
 import { headerValue, pixelScale } from '../instrument/profile';
+import { applyInverse } from '../align';
 import { suggestedTrim } from '../masters';
+import { centre, lightsByTime, referenceFrame, runAuto, transformOf } from '../stack';
 import { masterId, state } from '../state';
 import { median, stats, values } from '../stats';
 import type { Region } from '../types';
@@ -94,6 +96,38 @@ export class MeasureContext {
   /** The filter used in the flat task: the first one with flats. */
   get flatFilter(): string {
     return state.filtersOf('flat')[0] ?? '';
+  }
+
+  /** The first and the last light frame in time, for the alignment task. */
+  get firstLast() {
+    const lights = lightsByTime();
+    return lights.length >= 2 ? { first: lights[0], last: lights[lights.length - 1] } : undefined;
+  }
+
+  /**
+   * How far a star at the centre of the reference moves between the first and the last frame, in px:
+   * from the student's chosen alignment and from the app's own (both count as right).
+   */
+  get firstLastShift(): number[] {
+    return this.memo('shift', () => {
+      const fl = this.firstLast;
+      const ref = referenceFrame();
+      if (!fl || !ref || !state.calibrated.size) return [];
+      const c = centre(ref);
+      const shift = (a: { dx: number; dy: number; rotation: number }, b: { dx: number; dy: number; rotation: number }) => {
+        const p = applyInverse(a, c, c);
+        const q = applyInverse(b, c, c);
+        return Math.hypot(p.x - q.x, p.y - q.y);
+      };
+      const out: number[] = [];
+      const own = [transformOf(fl.first.meta.id), transformOf(fl.last.meta.id)];
+      if (own[0] && own[1]) out.push(shift(own[0], own[1]));
+      const ids = [fl.first.meta.id, fl.last.meta.id];
+      const auto = ids.every((id) => state.auto.has(id)) ? state.auto : runAuto(ids, false);
+      const a = ids.map((id) => auto.get(id));
+      if (a[0] && a[1]) out.push(shift(a[0], a[1]));
+      return out;
+    });
   }
 
   /** Median in the centre and in 32 × 32 corner boxes of the master flat. */

@@ -38,7 +38,8 @@ export class CalibrationStep {
   private active = false;
   private busy = false;
 
-  constructor(private viewer: ViewerPanel) {
+  /** `toAlign` opens the next step. */
+  constructor(private viewer: ViewerPanel, private toAlign: () => void) {
     state.on((kind) => {
       if (!this.active) return;
       if (kind === 'steps' || kind === 'masters' || kind === 'calibrated' || kind === 'frames' || kind === 'settings' || kind === 'profile') this.render();
@@ -511,7 +512,9 @@ export class CalibrationStep {
             h('td', {}, h('button', { type: 'button', onclick: () => this.viewer.show(f.meta.id) }, t('cal.raw'))),
             h('td', {}, h('button', { type: 'button', onclick: () => this.viewer.show(`cal:${f.meta.id}`) }, t('cal.calibratedShort')))))))) : null,
       renderTasks(tasksFor('calibrate')),
-      done ? h('p', { class: 'ok next' }, t('cal.allDone')) : null,
+      done ? h('div', { class: 'next' },
+        h('p', { class: 'ok' }, t('cal.allDone')),
+        h('button', { type: 'button', class: 'primary', onclick: () => this.toAlign() }, t('cal.next', { what: t('step.align') }))) : null,
     );
   }
 }

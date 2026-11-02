@@ -451,3 +451,16 @@ ol.progress li.done { color: var(--muted); }
 ul.log { margin: 0; padding-left: 1.2rem; }
 ul.log .date { color: var(--muted); font-variant-numeric: tabular-nums; }
 .resume ul { margin: 0; padding-left: 1.2rem; }
+
+/* Alignment and stacking */
+
+.viewer canvas[data-tool='pick'] { cursor: crosshair; }
+.pick-hint { font-weight: 600; color: var(--accent); margin: 0.4rem 0; }
+.table-wrap { overflow-x: auto; }
+.align-table tbody tr { cursor: default; }
+.align-table td.name { min-width: 10rem; word-break: break-all; }
+.align-table th[colspan] { text-align: center; }
+.buttons-cell { white-space: nowrap; }
+.buttons-cell button + button { margin-left: 0.3rem; }
+button.small { padding: 0 0.4rem; font-size: 0.85rem; margin-left: 0.4rem; }
+.next { gap: 0.8rem; align-items: center; flex-wrap: wrap; }

@@ -2,7 +2,7 @@
 
 import type { Region } from './types';
 
-export type Tool = 'pixel' | 'profile' | 'box';
+export type Tool = 'pixel' | 'profile' | 'box' | 'pick';
 export type ProfileAxis = 'row' | 'column';
 
 export interface ViewImage {
@@ -13,12 +13,23 @@ export interface ViewImage {
   flipY: boolean;
 }
 
+/** A circle drawn on the image, e.g. a clicked star; 0-based file coordinates. */
+export interface Marker {
+  x: number;
+  y: number;
+  label?: string;
+  /** 'ghost' is drawn dimmer, e.g. where a star was in the reference frame. */
+  style?: 'star' | 'ghost';
+}
+
 export interface ViewerEvents {
   /** Pointer over the image; 0-based file coordinates, or null when outside. */
   hover?: (p: { x: number; y: number; value: number } | null) => void;
   profile?: (axis: ProfileAxis, index: number) => void;
   box?: (region: Region | null) => void;
   zoom?: (scale: number) => void;
+  /** A click (not a drag) with the pick tool; 0-based file coordinates of the pixel centre. */
+  pick?: (p: { x: number; y: number }) => void;
 }
 
 const MIN_SCALE = 1 / 16;
@@ -41,6 +52,7 @@ export class Viewer {
   private profileIndex: number | null = null;
   private box: Region | null = null;
   private region: Region | null = null;
+  private markers: Marker[] = [];
   private drag: { mode: 'pan' | 'box' | 'click'; startX: number; startY: number; ox: number; oy: number; ix: number; iy: number } | null = null;
 
   constructor(private events: ViewerEvents = {}) {
@@ -99,6 +111,11 @@ export class Viewer {
   /** A dashed outline, e.g. the trim region. */
   setRegion(r: Region | null): void {
     this.region = r;
+    this.draw();
+  }
+
+  setMarkers(markers: Marker[]): void {
+    this.markers = markers;
     this.draw();
   }
 
@@ -216,7 +233,7 @@ export class Viewer {
     const { cx, cy } = this.canvasPoint(e);
     const p = this.toImage(cx, cy);
     this.canvas.setPointerCapture(e.pointerId);
-    const mode = e.altKey ? 'pan' : this.tool === 'box' ? 'box' : this.tool === 'profile' ? 'click' : 'pan';
+    const mode = e.altKey ? 'pan' : this.tool === 'box' ? 'box' : this.tool === 'profile' || this.tool === 'pick' ? 'click' : 'pan';
     this.drag = { mode, startX: cx, startY: cy, ox: this.offsetX, oy: this.offsetY, ix: p.x, iy: p.y };
   }
 
@@ -249,7 +266,9 @@ export class Viewer {
     if (!d || !this.image) return;
     const { cx, cy } = this.canvasPoint(e);
     const p = this.toImage(cx, cy);
-    if (d.mode === 'click' && this.inside(p)) {
+    if (d.mode === 'click' && this.inside(p) && this.tool === 'pick') {
+      this.events.pick?.(p);
+    } else if (d.mode === 'click' && this.inside(p)) {
       this.profileIndex = this.profileAxis === 'row' ? p.y : p.x;
       this.events.profile?.(this.profileAxis, this.profileIndex);
       this.draw();
@@ -310,6 +329,7 @@ export class Viewer {
       );
       ctx.restore();
     }
+    if (this.markers.length) this.drawMarkers(dpr);
     if (this.box) {
       const b = this.box;
       const top = Math.min(this.displayRow(b.y0), this.displayRow(b.y1));
@@ -321,5 +341,31 @@ export class Viewer {
         (b.y1 - b.y0 + 1) * this.scale,
       );
     }
+  }
+
+  private drawMarkers(dpr: number): void {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.font = `${12 * dpr}px system-ui, sans-serif`;
+    ctx.textBaseline = 'bottom';
+    for (const m of this.markers) {
+      // Pixel centres are at +0.5; positions are fractional
+      const x = this.offsetX + (m.x + 0.5) * this.scale;
+      const row = this.image!.flipY ? this.image!.height - 1 - m.y : m.y;
+      const y = this.offsetY + (row + 0.5) * this.scale;
+      const r = Math.max(7 * dpr, 4 * this.scale);
+      const ghost = m.style === 'ghost';
+      ctx.strokeStyle = ghost ? 'rgba(0, 208, 255, 0.8)' : '#ffd400';
+      ctx.setLineDash(ghost ? [3 * dpr, 3 * dpr] : []);
+      ctx.lineWidth = 1.5 * dpr;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, 2 * Math.PI);
+      ctx.stroke();
+      if (m.label) {
+        ctx.fillStyle = ctx.strokeStyle;
+        ctx.fillText(m.label, x + r * 0.75, y - r * 0.75);
+      }
+    }
+    ctx.restore();
   }
 }

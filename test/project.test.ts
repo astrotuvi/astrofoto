@@ -66,7 +66,7 @@ describe('project file', () => {
     await loadSet();
     const light = state.framesOf('light')[1];
     state.updateMeta(light.meta.id, { filter: 'R', kindSource: 'user', excluded: true });
-    state.updateSettings({ trim: { x0: 1, x1: W - 1, y0: 0, y1: 3 }, combine: { bias: 'mean', dark: 'median', flat: 'median' } });
+    state.updateSettings({ trim: { x0: 1, x1: W - 1, y0: 0, y1: 3 }, combine: { bias: 'mean', dark: 'median', flat: 'median', stack: 'median' } });
     for (const s of ['trim', 'bias', 'dark', 'flat', 'calibrate'] as const) state.setStep(s, { done: true });
     state.setInfo({ title: 'M57', student: 'Mari' });
     state.setAnswer('bias-noise.mean', { value: '1001', correct: true, attempts: 1 });

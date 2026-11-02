@@ -2,6 +2,7 @@
 
 import { calibrateLight, detectTrim, masterBias, masterDark, masterFlat, type Plane, trimPlane } from './calibrate';
 import { type FitsImage, type HeaderCard, type HeaderValue, valueCard } from './fits';
+import { refreshAligned } from './stack';
 import { type Frame, type Master, type MasterKind, masterId, state } from './state';
 import type { CombineMethod, Region, StepId } from './types';
 
@@ -16,7 +17,7 @@ function regionText(r: Region): string {
 }
 
 /** A float image with the first source frame's header and HISTORY lines. */
-function toImage(p: Plane, source: Frame, kind: string, history: string[], imageType = `MASTER ${kind.toUpperCase()}`): FitsImage {
+export function toImage(p: Plane, source: { image: FitsImage }, kind: string, history: string[], imageType = `MASTER ${kind.toUpperCase()}`): FitsImage {
   const keep = (c: HeaderCard) => !['NAXIS1', 'NAXIS2', 'BZERO', 'BSCALE', 'BITPIX', 'CHECKSUM', 'DATASUM', 'IMAGETYP'].includes(c.key);
   const extra = [
     { key: 'IMAGETYP', value: imageType },
@@ -103,8 +104,9 @@ export function computeMasters(kind: MasterKind): boolean {
 }
 
 /**
- * Rebuilds the results of the steps already done, in order, after the frames or settings
- * have changed. A step done without frames ("continue without") stays done.
+ * Rebuilds the results of the steps already done, in order (masters, calibration, alignment,
+ * stacks), after the frames or settings have changed. A step done without frames
+ * ("continue without") stays done.
  */
 export function refreshAll(): void {
   for (const kind of ['bias', 'dark', 'flat'] as MasterKind[]) {
@@ -113,6 +115,7 @@ export function refreshAll(): void {
   }
   if (state.isDone('calibrate')) calibrateLights();
   else if (state.calibrated.size) state.setCalibrated(new Map());
+  refreshAligned();
 }
 
 /** Dark scale factor for a light: t_light / t_dark, or 1 when the dark still contains the bias. */

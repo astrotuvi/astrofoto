@@ -9,7 +9,7 @@ import { renderBoxStats } from '../tools/boxstats';
 import { type HistogramChange, renderHistogram } from '../tools/histogram';
 import { renderProfile } from '../tools/profile';
 import { KINDS } from '../types';
-import { type ProfileAxis, type Tool, Viewer } from '../viewer';
+import { type Marker, type ProfileAxis, type Tool, Viewer } from '../viewer';
 import { renderHeader } from './header';
 
 export type Tab = 'pixel' | 'profile' | 'box' | 'histogram' | 'header';
@@ -28,11 +28,27 @@ export interface ShowOptions {
   profile?: { axis: ProfileAxis; index: number | null };
 }
 
+/** Lets a step take clicks on the image, e.g. to mark stars, and draw markers. */
+export interface Picker {
+  /** Markers for the image with this id. */
+  markers(id: string): Marker[];
+  /** A click on the image with this id, in 0-based image coordinates. Undefined = only markers. */
+  pick?(id: string, x: number, y: number): void;
+  /** Shown on the pixel tab, for the image with this id. */
+  hint?(id: string | null): string;
+}
+
 /** A readable name for a master id, e.g. "koondtasaväljakaader g". */
 export function masterTitle(id: string): string {
   const m = state.masters.get(id);
   if (!m) return id;
   return t('master.title', { kind: term(m.kind), filter: m.filter ? ' ' + m.filter : '' });
+}
+
+/** E.g. "liidetud pilt g". */
+export function stackTitle(id: string): string {
+  const st = state.stacks.get(id);
+  return st ? t('stack.title', { filter: st.filter || '–' }) : id;
 }
 
 export class ViewerPanel {
@@ -49,6 +65,7 @@ export class ViewerPanel {
   private toolArea = h('div', { class: 'tool-area' });
   private sortedCache = new WeakMap<Float32Array, Float32Array>();
   private shownData: Float32Array | null = null;
+  private picker: Picker | null = null;
 
   constructor() {
     this.viewer = new Viewer({
@@ -59,9 +76,12 @@ export class ViewerPanel {
         this.renderTool();
       },
       zoom: (s) => (this.zoomLabel.textContent = `${fmt(s * 100, 0)} %`),
+      pick: (p) => {
+        if (state.selectedId) this.picker?.pick?.(state.selectedId, p.x, p.y);
+      },
     });
     state.on((kind) => {
-      if (kind === 'selection' || kind === 'frames' || kind === 'masters' || kind === 'calibrated') this.showImage();
+      if (kind === 'selection' || kind === 'frames' || kind === 'masters' || kind === 'calibrated' || kind === 'aligned' || kind === 'stacks') this.showImage();
       if (kind === 'overlay' || kind === 'settings') this.updateOverlay();
     });
     this.render();
@@ -75,6 +95,23 @@ export class ViewerPanel {
     if (opt.profile) this.viewer.setProfile(opt.profile.axis, opt.profile.index);
     this.render();
     this.element.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+
+  /** Starts or stops taking clicks and drawing markers. */
+  setPicker(picker: Picker | null): void {
+    this.picker = picker;
+    this.updateOverlay();
+    this.render();
+  }
+
+  /** Redraws the markers, e.g. after a star was added. */
+  updateMarkers(): void {
+    this.viewer.setMarkers(this.picker && state.selectedId ? this.picker.markers(state.selectedId) : []);
+  }
+
+  private tool(): Tool {
+    if (this.tab === 'pixel' && this.picker?.pick) return 'pick';
+    return TABS.find((x) => x.id === this.tab)!.tool;
   }
 
   /** Rebuilds the controls, e.g. after a language change. The canvas is kept. */
@@ -94,7 +131,7 @@ export class ViewerPanel {
         }, t(tab.label)))),
       this.toolArea,
     );
-    this.viewer.setTool(TABS.find((x) => x.id === this.tab)!.tool);
+    this.viewer.setTool(this.tool());
     this.showReadout(null);
     this.renderTool();
   }
@@ -106,13 +143,20 @@ export class ViewerPanel {
       groups.push(h('optgroup', { label: t('viewer.masters') },
         [...state.masters.keys()].map((id) => h('option', { value: id, selected: id === state.selectedId }, masterTitle(id)))));
     }
-    if (state.calibrated.size) {
-      groups.push(h('optgroup', { label: t('viewer.calibrated') },
-        state.framesOf('light').filter((f) => state.calibrated.has(f.meta.id)).map((f) => {
-          const id = `cal:${f.meta.id}`;
-          return h('option', { value: id, selected: id === state.selectedId }, `${f.meta.filter ? f.meta.filter + ' · ' : ''}${f.meta.fileName}`);
-        })));
+    const lightGroup = (label: Key, prefix: string, has: (id: string) => boolean) => {
+      const frames = state.framesOf('light').filter((f) => has(f.meta.id));
+      if (!frames.length) return;
+      groups.push(h('optgroup', { label: t(label) }, frames.map((f) => {
+        const id = `${prefix}${f.meta.id}`;
+        return h('option', { value: id, selected: id === state.selectedId }, `${f.meta.filter ? f.meta.filter + ' · ' : ''}${f.meta.fileName}`);
+      })));
+    };
+    if (state.stacks.size) {
+      groups.push(h('optgroup', { label: t('viewer.stacks') },
+        [...state.stacks.values()].map((st) => h('option', { value: st.id, selected: st.id === state.selectedId }, stackTitle(st.id)))));
     }
+    lightGroup('viewer.aligned', 'aligned:', (id) => state.aligned.has(id));
+    lightGroup('viewer.calibrated', 'cal:', (id) => state.calibrated.has(id));
     for (const kind of KINDS) {
       const frames = state.frames.filter((f) => f.meta.kind === kind);
       if (!frames.length) continue;
@@ -201,6 +245,7 @@ export class ViewerPanel {
     // The trim region only makes sense on raw (untrimmed) frames
     const region = v && !v.isMaster ? (state.trimPreview ?? state.settings.trim ?? null) : null;
     this.viewer.setRegion(region);
+    this.updateMarkers();
   }
 
   private showImage(): void {
@@ -242,9 +287,11 @@ export class ViewerPanel {
     switch (this.tab) {
       case 'pixel':
         content = h('div', { class: 'tool-out' },
+          this.picker?.hint ? h('p', { class: 'pick-hint' }, this.picker.hint(state.selectedId)) : null,
           h('p', { class: 'hint' }, t('pixel.hint')),
           h('p', { class: 'hint' }, t('pixel.coords')),
-          v.isMaster && state.settings.trim ? h('p', { class: 'hint' }, t('pixel.trimmed')) : null);
+          v.isMaster && state.settings.trim ? h('p', { class: 'hint' }, t('pixel.trimmed')) : null,
+          /^(aligned|stack):/.test(state.selectedId ?? '') ? h('p', { class: 'hint' }, t('pixel.cropped')) : null);
         break;
       case 'profile': {
         const p = this.viewer.getProfile();

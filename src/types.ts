@@ -47,10 +47,24 @@ export interface InstrumentProfile {
 
 export type CombineMethod = 'median' | 'mean' | 'sigmaClip';
 
+export type AlignModel = 'shift' | 'shiftRotation';
+
+/**
+ * Maps a light frame onto the reference: q = R(rotation)·(p − c) + c + (dx, dy), in raw
+ * (untrimmed) 0-based pixel coordinates, with c the centre of the raw frame.
+ */
+export interface AlignTransform {
+  dx: number;
+  dy: number;
+  /** Radians. */
+  rotation: number;
+  source: 'manual' | 'auto';
+}
+
 export interface ProcessingSettings {
   /** undefined = not decided yet; null = no trimming. Copied from the student's decision. */
   trim?: Region | null;
-  combine: { bias: CombineMethod; dark: CombineMethod; flat: CombineMethod };
+  combine: { bias: CombineMethod; dark: CombineMethod; flat: CombineMethod; stack: CombineMethod };
   /** Which masters are applied to the light frames; switched off for "what if" experiments. */
   useBias: boolean;
   useDark: boolean;
@@ -58,4 +72,11 @@ export interface ProcessingSettings {
   /** Subtract the dark (scaled to each flat's exposure) from the flats too. */
   darkForFlats: boolean;
   saturationLevel?: number;
+  /** Light frame the others are aligned to; undefined = the first one in time. */
+  referenceId?: string;
+  alignModel: AlignModel;
+  /** Chosen transform per light frame id. */
+  transforms: Record<string, AlignTransform>;
+  /** Stars clicked by the student per light frame, in raw 0-based coordinates; star k matches star k of the reference. */
+  manualStars: Record<string, [number, number][]>;
 }

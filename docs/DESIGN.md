@@ -2,7 +2,7 @@
 
 A browser app for reducing monochrome CCD images in FITS format and combining them into colour images. It is built as a learning tool for an after-school astronomy project.
 
-Status: milestones 1–3 (viewer, master frames, calibration and project file) implemented. Last updated 2026-11-02.
+Status: milestones 1–4 (viewer, master frames, calibration and project file, alignment and stacking) implemented. Last updated 2026-11-02.
 
 ---
 
@@ -82,7 +82,7 @@ In this document, pixel coordinates are **1-based**, the convention used by FITS
 | Flat levels vary from about 30 000 to 43 000 ADU within a filter. | Each flat **must** be divided by its own median before combining. |
 | Flats are from a different night than the lights. | Master flats are matched to lights **by filter only**, not by date. |
 | `R` (Johnson) and `r` (Sloan) are different filters. | Filter names are **case-sensitive** and never changed. Bias and dark frames ignore `FILTER`. |
-| The same bright stars appear in all 18 lights. The drift is up to about 4 px, with no rotation. | Alignment corrects **shift only**, measured to a fraction of a pixel. |
+| The same bright stars appear in all 18 lights. The drift is up to about 4.2 px (V frames), with no rotation (< 0.03°). It wanders rather than growing steadily: the last frame is 2.3 px from the first. Only 4–6 stars stand out in g and B; the bright knots of M57 look like stars to a simple peak finder. | Alignment corrects **shift only**, measured to a fraction of a pixel (scatter 0.05–0.2 px). Star finding rejects peaks that do not stand out at least 5× the scatter of the ring around them. |
 | There are 3 lights per filter. | **Median** stacking is the default: it removes cosmic rays. Sigma clipping is pointless with 3 frames. |
 | The sky background differs by filter, roughly 600–1300 ADU above bias. | An automatic black point for each channel, taken from the background median. |
 | The brightest star peaks at about 62 000 ADU raw in r and i. | A saturation overlay, with an adjustable level (default 60 000 ADU raw). |
@@ -219,7 +219,9 @@ The student can switch each of bias, dark and flat **on or off** to see the effe
    The app shows its result next to the student's. The student chooses which one to use.
 4. Each image is transformed with bilinear interpolation, then cropped to the area all frames cover.
 5. The aligned frames of each filter are stacked, by median (default) or mean. With 5 or more frames, **sigma-clipped mean** is offered as well, with an explanation under "Uuri lähemalt".
-6. After one filter has been done by hand, a **"Tee sama ülejäänud filtritega"** button (do the same for the other filters) is available.
+6. After one filter has been done by hand, a **"Tee sama ülejäänud filtritega"** button (do the same for the other filters) is available. It aligns the frames of the other filters automatically; they still appear in the comparison.
+
+In the app the step has three parts: **Käsitsi** (by hand: reference, model, clicked stars), **Automaatne kontroll** (the app's result next to the student's, the difference at the frame corners, the choice per frame, then confirming) and **Liitmine** (stacking). The reference frame is shared by all filters, so the stacks of different filters line up for the colour step. Clicked stars are shown as numbered circles, and the reference stars as dashed circles in the other frames, the aligned frames and the stacks: after alignment the stars must sit inside them. Changing the reference or the model clears the alignment (the clicked stars are kept).
 
 ### 3.4 Colour
 
@@ -310,7 +312,7 @@ Planned tasks for the reference dataset:
 | 7a | Calibration | Measure the sky background before and after calibration. How much did it drop, and why? | ≈ 1458 ADU (bias + dark) |
 | 7 | Calibration | Calibrate without the flat and compare the background at the centre and the edge. | experiment |
 | 8 | Header | Calculate the plate scale in ″/px and the field of view in ′. | ≈ 0.45″/px, ≈ 3.8′ |
-| 9 | Alignment | How large is the shift between the first and last frame, in px and ″? What causes it? | up to ≈ 4 px ≈ 1.8″; tracking |
+| 9 | Alignment | How large is the shift between the first and last frame, in px and ″? What causes it? | ≈ 2.3 px ≈ 1.0″ (up to ≈ 4.2 px in between); tracking |
 | 10 | Stacking | Find a cosmic-ray hit. Which stacking method removes it, and why? | median |
 | 11 | Stars | Measure the FWHM of a star in px and ″ (seeing). | to be measured |
 | 12 | Saturation | Find saturated or nearly saturated stars. Why can their brightness not be measured? | r, i |
@@ -543,13 +545,15 @@ interface ProcessingSettings {
   trim?: { x0: number; x1: number; y0: number; y1: number } | null;  // undefined = not decided; null = no trimming
   useBias: boolean; useDark: boolean; useFlat: boolean;  // applied to the lights; masters are built regardless
   darkForFlats: boolean;
-  combine: Record<'bias' | 'dark' | 'flat', 'median' | 'mean' | 'sigmaClip'>;
+  combine: Record<'bias' | 'dark' | 'flat' | 'stack', 'median' | 'mean' | 'sigmaClip'>;
   sigmaClip?: { low: number; high: number };   // default 3σ / 3σ, σ from the median absolute deviation
   saturationLevel: number;       // raw ADU
-  referenceId?: string;
+  referenceId?: string;          // undefined = first light in time
   alignModel: 'shift' | 'shiftRotation';
+  // q = R(rotation)·(p − c) + c + (dx, dy): frame point p → reference point q, in raw (untrimmed)
+  // 0-based coordinates, c = centre of the raw frame. Raw coordinates keep them valid when the trim changes.
   transforms: Record<string, { dx: number; dy: number; rotation: number /* rad */; source: 'manual' | 'auto' }>;
-  manualStars: Record<string, [number, number][]>;
+  manualStars: Record<string, [number, number][]>;  // raw coordinates; star k matches star k of the reference
 }
 
 interface Composition {
@@ -626,7 +630,8 @@ src/
   checks.ts            consistency checks (§2.4)
   align.ts             centroid, star finding, matching (nearest neighbour, 180° flip, triangles),
                        shift/rotation fit, bilinear transform, common crop
-  stack.ts             median/mean combine
+  stack.ts             reference frame, manual and automatic transforms, aligned frames,
+                       common crop and stacks per filter, built from the state
   color.ts             channel mapping, black/white point, stretch → RGBA
   viewer.ts            canvas display, zoom/pan, overlays, click handling
   project.ts           .astroproj format: serialize, open, migrate

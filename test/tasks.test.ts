@@ -27,6 +27,13 @@ describe('tasks', () => {
     expect(checkPart({ ...part(0, {}), expected: () => undefined }, '1', ctx)).toBe('unavailable');
   });
 
+  it('checks a choice', () => {
+    const choice: TaskPart = { id: 'c', label: { et: '', en: '' }, type: 'choice', options: [], correct: 'median' };
+    expect(checkPart(choice, 'median', ctx)).toBe('correct');
+    expect(checkPart(choice, 'mean', ctx)).toBe('wrong');
+    expect(checkPart(choice, '', ctx)).toBe('empty');
+  });
+
   it('has a text with hints for every task in both languages', () => {
     for (const task of TASKS) {
       for (const lang of ['et', 'en'] as const) expect(hasContent('tasks', task.id, lang), `${lang}/${task.id}`).toBe(true);
@@ -36,8 +43,8 @@ describe('tasks', () => {
     }
   });
 
-  it('has explanations for each calibration step in both languages', () => {
-    for (const id of ['trim', 'bias', 'dark', 'flat']) {
+  it('has explanations for each step in both languages', () => {
+    for (const id of ['trim', 'bias', 'dark', 'flat', 'calibrate', 'align', 'stack']) {
       for (const lang of ['et', 'en'] as const) expect(hasContent('steps', id, lang), `${lang}/${id}`).toBe(true);
     }
   });

@@ -1,6 +1,7 @@
 // In-memory application state and change events.
 
 import type { FitsImage } from './fits';
+import type { AutoResult } from './align';
 import type { CombineMethod, FrameMeta, InstrumentProfile, Kind, ProcessingSettings, Region, StepId } from './types';
 
 export interface Frame {
@@ -44,6 +45,15 @@ export interface Master {
   levels?: number[];
 }
 
+export interface Stack {
+  /** 'stack:<filter>' */
+  id: string;
+  filter: string;
+  image: FitsImage;
+  count: number;
+  method: CombineMethod;
+}
+
 export interface StepState {
   done: boolean;
   /** The student took the app's suggestion instead of their own choice. */
@@ -56,11 +66,11 @@ export interface Answer {
   attempts: number;
 }
 
-export type ChangeKind = 'frames' | 'selection' | 'profile' | 'settings' | 'masters' | 'calibrated' | 'steps' | 'answers'
-  | 'overlay' | 'info' | 'log' | 'saved';
+export type ChangeKind = 'frames' | 'selection' | 'profile' | 'settings' | 'masters' | 'calibrated' | 'aligned' | 'stacks'
+  | 'auto' | 'steps' | 'answers' | 'overlay' | 'info' | 'log' | 'saved';
 
 /** Changes that do not need saving. */
-const TRANSIENT = new Set<ChangeKind>(['selection', 'overlay', 'saved', 'masters', 'calibrated']);
+const TRANSIENT = new Set<ChangeKind>(['selection', 'overlay', 'saved', 'masters', 'calibrated', 'aligned', 'stacks', 'auto']);
 
 export function masterId(kind: MasterKind, filter = ''): string {
   return kind === 'flat' ? `master:flat:${filter}` : `master:${kind}`;
@@ -69,11 +79,14 @@ export function masterId(kind: MasterKind, filter = ''): string {
 export function defaultSettings(): ProcessingSettings {
   return {
     trim: undefined,
-    combine: { bias: 'median', dark: 'median', flat: 'median' },
+    combine: { bias: 'median', dark: 'median', flat: 'median', stack: 'median' },
     useBias: true,
     useDark: true,
     useFlat: true,
     darkForFlats: false,
+    alignModel: 'shift',
+    transforms: {},
+    manualStars: {},
   };
 }
 
@@ -85,6 +98,14 @@ class State {
   masters = new Map<string, Master>();
   /** Calibrated light frames, keyed by frame id. */
   calibrated = new Map<string, FitsImage>();
+  /** Calibrated lights moved onto the reference and cropped to the common area, keyed by frame id. */
+  aligned = new Map<string, FitsImage>();
+  /** Common area of the aligned frames, in calibrated (trimmed) coordinates. */
+  alignCrop: Region | null = null;
+  /** Stacked image per filter. */
+  stacks = new Map<string, Stack>();
+  /** The app's own alignment of each light (null = it found no match), for comparison. */
+  auto = new Map<string, AutoResult | null>();
   info: ProjectInfo = newInfo();
   log: LogEntry[] = [];
   /** Changed since the last save. */
@@ -118,16 +139,19 @@ class State {
     return [...new Set(this.framesOf(kind).map((f) => f.meta.filter))].sort();
   }
 
-  /** The image shown for an id: a frame, a master ('master:…') or a calibrated light ('cal:<frame id>'). */
+  /**
+   * The image shown for an id: a frame, a master ('master:…'), a calibrated light ('cal:<frame id>'),
+   * an aligned light ('aligned:<frame id>') or a stack ('stack:<filter>').
+   */
   viewable(id: string | null): { title: string; image: FitsImage; isMaster: boolean } | undefined {
     if (!id) return undefined;
-    const m = this.masters.get(id);
+    const m = this.masters.get(id) ?? this.stacks.get(id);
     if (m) return { title: id, image: m.image, isMaster: true };
-    if (id.startsWith('cal:')) {
-      const c = this.calibrated.get(id.slice(4));
-      // Calibrated frames are trimmed like the masters
-      return c ? { title: id, image: c, isMaster: true } : undefined;
-    }
+    // Calibrated and aligned frames are trimmed like the masters
+    const derived = id.startsWith('cal:') ? this.calibrated.get(id.slice(4))
+      : id.startsWith('aligned:') ? this.aligned.get(id.slice(8)) : undefined;
+    if (derived) return { title: id, image: derived, isMaster: true };
+    if (id.includes(':')) return undefined;
     const f = this.frame(id);
     return f ? { title: f.meta.fileName, image: f.image, isMaster: false } : undefined;
   }
@@ -153,12 +177,16 @@ class State {
     this.answers = {};
     this.hintsUsed = {};
     this.calibrated.clear();
+    this.aligned.clear();
+    this.alignCrop = null;
+    this.stacks.clear();
+    this.auto.clear();
     this.info = newInfo();
     this.log = [];
     this.trimPreview = null;
     this.nextId = 1;
     this.select(null);
-    for (const k of ['frames', 'profile', 'settings', 'masters', 'calibrated', 'steps', 'answers', 'info', 'log'] as const) this.emit(k);
+    for (const k of ['frames', 'profile', 'settings', 'masters', 'calibrated', 'aligned', 'stacks', 'auto', 'steps', 'answers', 'info', 'log'] as const) this.emit(k);
     this.markSaved();
   }
 
@@ -184,6 +212,24 @@ class State {
     this.calibrated = images;
     if (this.selectedId?.startsWith('cal:') && !this.viewable(this.selectedId)) this.select(null);
     this.emit('calibrated');
+  }
+
+  setAligned(images: Map<string, FitsImage>, crop: Region | null): void {
+    this.aligned = images;
+    this.alignCrop = crop;
+    if (this.selectedId?.startsWith('aligned:') && !this.viewable(this.selectedId)) this.select(null);
+    this.emit('aligned');
+  }
+
+  setStacks(stacks: Map<string, Stack>): void {
+    this.stacks = stacks;
+    if (this.selectedId?.startsWith('stack:') && !this.viewable(this.selectedId)) this.select(null);
+    this.emit('stacks');
+  }
+
+  setAuto(auto: Map<string, AutoResult | null>): void {
+    this.auto = auto;
+    this.emit('auto');
   }
 
   markSaved(): void {
@@ -262,6 +308,8 @@ class State {
     let sum = this.frames.reduce((s, f) => s + f.image.data.byteLength + f.raw.byteLength, 0);
     for (const m of this.masters.values()) sum += m.image.data.byteLength;
     for (const c of this.calibrated.values()) sum += c.data.byteLength;
+    for (const c of this.aligned.values()) sum += c.data.byteLength;
+    for (const c of this.stacks.values()) sum += c.image.data.byteLength;
     return sum;
   }
 

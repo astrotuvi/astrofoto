@@ -90,7 +90,12 @@ export interface OpenResult {
 function migrate(json: ProjectJson): ProjectJson {
   return {
     ...json,
-    settings: { ...defaultSettings(), ...json.settings },
+    settings: {
+      ...defaultSettings(),
+      ...json.settings,
+      // Projects from 0.3 have no stacking method yet
+      combine: { ...defaultSettings().combine, ...json.settings.combine },
+    },
     hintsUsed: json.hintsUsed ?? {},
     log: json.log ?? [],
     steps: json.steps ?? {},

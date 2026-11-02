@@ -10,7 +10,7 @@ export type Requirement = 'pixelScale' | 'overscan' | 'bias' | 'darks' | 'flats'
 export interface TaskPart {
   id: string;
   label: { et: string; en: string };
-  type: 'number' | 'text' | 'keyword';
+  type: 'number' | 'text' | 'keyword' | 'choice';
   unit?: string;
   /** Expected value; undefined when it cannot be computed yet (e.g. no master frame). */
   expected?: (ctx: MeasureContext) => number | number[] | undefined;
@@ -18,6 +18,9 @@ export interface TaskPart {
   tolerance?: { rel?: number; abs?: number };
   /** For keyword parts: is this keyword right? */
   check?: (value: string, ctx: MeasureContext) => boolean;
+  /** For choice parts: the options, and the id of the right one. */
+  options?: { id: string; label: { et: string; en: string } }[];
+  correct?: string;
 }
 
 export interface Task {
@@ -136,6 +139,37 @@ export const TASKS: Task[] = [
       { id: 'observation', label: { et: 'Mida märkasid?', en: 'What did you notice?' }, type: 'text' },
     ],
   },
+  {
+    id: 'align-shift',
+    step: 'align',
+    requires: ['pixelScale'],
+    params: (c) => ({ first: c.firstLast?.first.meta.fileName ?? '', last: c.firstLast?.last.meta.fileName ?? '' }),
+    parts: [
+      { id: 'px', label: { et: 'Nihe', en: 'Shift' }, type: 'number', unit: 'px', expected: (c) => c.firstLastShift, tolerance: { rel: 0.15, abs: 0.4 } },
+      {
+        id: 'arcsec', label: { et: 'Nihe nurgasekundites', en: 'Shift in arcseconds' }, type: 'number', unit: '″',
+        expected: (c) => (c.pixelScale ? c.firstLastShift.map((s) => s * c.pixelScale!) : undefined), tolerance: { rel: 0.15, abs: 0.2 },
+      },
+      { id: 'cause', label: { et: 'Mis võis nihke põhjustada?', en: 'What could have caused the shift?' }, type: 'text' },
+    ],
+  },
+  {
+    id: 'stack-cosmic',
+    step: 'stack',
+    parts: [
+      { id: 'where', label: { et: 'Kus see on? (kaader, x ja y)', en: 'Where is it? (frame, x and y)' }, type: 'text' },
+      {
+        id: 'method', label: { et: 'Milline liitmise viis selle eemaldab?', en: 'Which stacking method removes it?' }, type: 'choice',
+        options: [
+          { id: 'mean', label: { et: 'keskmine', en: 'mean' } },
+          { id: 'median', label: { et: 'mediaan', en: 'median' } },
+          { id: 'both', label: { et: 'mõlemad', en: 'both' } },
+        ],
+        correct: 'median',
+      },
+      { id: 'why', label: { et: 'Miks?', en: 'Why?' }, type: 'text' },
+    ],
+  },
 ];
 
 export function tasksFor(step: StepId): Task[] {
@@ -168,6 +202,7 @@ export function checkPart(part: TaskPart, value: string, ctx: MeasureContext): C
   if (!value.trim()) return 'empty';
   if (part.type === 'text') return 'saved';
   if (part.type === 'keyword') return part.check?.(value, ctx) ? 'correct' : 'wrong';
+  if (part.type === 'choice') return value === part.correct ? 'correct' : 'wrong';
   const x = parseNumber(value);
   if (!Number.isFinite(x)) return 'invalid';
   const e = part.expected?.(ctx);
