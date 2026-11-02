@@ -10,6 +10,8 @@ export interface PlotOptions {
   logY?: boolean;
   /** Vertical marker lines at these x values. */
   markers?: { x: number; color: string }[];
+  /** A non-linear x axis; xs stay in data units. */
+  xScale?: XScale;
   /** Integer x ticks (pixel positions). */
   integerX?: boolean;
   /** CSS pixels; the canvas must be created with the same height. */
@@ -22,6 +24,35 @@ export interface PlotOptions {
 }
 
 const DEFAULT_HEIGHT = 220;
+
+export interface XScale {
+  to(x: number): number;
+  from(u: number): number;
+}
+
+/**
+ * asinh((x − center) / width): linear within about one width of the centre and logarithmic
+ * further out on both sides, e.g. a histogram around the sky background.
+ */
+export function asinhScale(center: number, width: number): XScale {
+  return { to: (x) => Math.asinh((x - center) / width), from: (u) => center + width * Math.sinh(u) };
+}
+
+/** Round tick values for a non-linear axis: evenly spaced in scale units, each rounded to a nice number. */
+function scaleTicks(s: XScale, lo: number, hi: number, target: number): number[] {
+  const center = s.from(0);
+  // The centre (e.g. the background) is always labelled when it is on the axis
+  const out: number[] = lo <= 0 && hi >= 0 ? [Math.round(center)] : [];
+  for (let i = 0; i <= target; i++) {
+    const x = s.from(lo + ((hi - lo) * i) / target);
+    // Round the distance from the centre to 1 or 2 significant digits, keeping the centre itself round
+    const d = x - center;
+    const step = d === 0 ? 1 : 10 ** Math.floor(Math.log10(Math.abs(d)));
+    const v = Math.round(x / step) * step;
+    if (d !== 0 && s.to(v) >= lo && s.to(v) <= hi && !out.includes(v)) out.push(Number(v.toPrecision(12)));
+  }
+  return out.sort((a, b) => a - b);
+}
 
 export function createPlotCanvas(height = DEFAULT_HEIGHT): HTMLCanvasElement {
   const c = document.createElement('canvas');
@@ -69,17 +100,19 @@ export function drawPlot(canvas: HTMLCanvasElement, xs: ArrayLike<number>, ys: A
 
   const n = xs.length;
   if (n === 0) return;
+  const tx = opt.xScale ? opt.xScale.to : (x: number) => x;
+  const us = Array.from(xs, tx);
   let xMin = Infinity, xMax = -Infinity, yMin = Infinity, yMax = -Infinity;
   for (let i = 0; i < n; i++) {
     const y = ys[i];
-    if (xs[i] < xMin) xMin = xs[i];
-    if (xs[i] > xMax) xMax = xs[i];
+    if (us[i] < xMin) xMin = us[i];
+    if (us[i] > xMax) xMax = us[i];
     if (!Number.isFinite(y) || (opt.logY && y <= 0)) continue;
     if (y < yMin) yMin = y;
     if (y > yMax) yMax = y;
   }
   // In step plots each x is a bin's left edge, so the last bin ends one step further
-  if (opt.style === 'steps' && n > 1) xMax += xs[n - 1] - xs[n - 2];
+  if (opt.style === 'steps' && n > 1) xMax += us[n - 1] - us[n - 2];
   if (!Number.isFinite(yMin)) { yMin = 0; yMax = 1; }
   if (opt.style === 'steps' && !opt.logY) yMin = 0;
   if (yMax === yMin) { yMax += 1; yMin -= opt.logY ? 0 : 1; }
@@ -90,7 +123,8 @@ export function drawPlot(canvas: HTMLCanvasElement, xs: ArrayLike<number>, ys: A
   const left = 64, right = 12, top = 10, bottom = 40;
   const w = cssWidth - left - right;
   const h = plotHeight - top - bottom;
-  const px = (x: number) => left + ((x - xMin) / (xMax - xMin || 1)) * w;
+  const pu = (u: number) => left + ((u - xMin) / (xMax - xMin || 1)) * w;
+  const px = (x: number) => pu(tx(x));
   const py = (y: number) => top + h - ((ty(y) - lo) / (hi - lo || 1)) * h;
 
   // Axes and ticks
@@ -99,13 +133,19 @@ export function drawPlot(canvas: HTMLCanvasElement, xs: ArrayLike<number>, ys: A
   ctx.lineWidth = 1;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
-  let xt = ticks(xMin, xMax, Math.max(2, Math.floor(w / 70)));
+  const xCount = Math.max(2, Math.floor(w / 70));
+  let xt = opt.xScale ? scaleTicks(opt.xScale, xMin, xMax, xCount) : ticks(xMin, xMax, xCount);
   if (opt.integerX) xt = xt.filter((v) => Number.isInteger(v));
-  const xd = tickDigits(xt);
+  const xd = opt.xScale ? 0 : tickDigits(xt);
+  let lastLabel = -Infinity;
   for (const v of xt) {
     const x = px(v);
+    // Rounding can bring ticks of a non-linear axis close together
+    const label = fmt(v, xd);
+    if (x - lastLabel < ctx.measureText(label).width + 8) continue;
+    lastLabel = x;
     ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, top + h); ctx.stroke();
-    ctx.fillText(fmt(v, xd), x, top + h + 4);
+    ctx.fillText(label, x, top + h + 4);
   }
   ctx.textAlign = 'right';
   ctx.textBaseline = 'middle';
@@ -148,7 +188,7 @@ export function drawPlot(canvas: HTMLCanvasElement, xs: ArrayLike<number>, ys: A
     const yy = opt.logY && y <= 0 ? top + h : py(y);
     if (opt.style === 'steps') {
       const x0 = px(xs[i]);
-      const x1 = i + 1 < n ? px(xs[i + 1]) : px(xs[i]) + (px(xs[i]) - px(xs[Math.max(0, i - 1)]));
+      const x1 = i + 1 < n ? px(xs[i + 1]) : pu(us[i]) + (pu(us[i]) - pu(us[Math.max(0, i - 1)]));
       if (!started) { ctx.moveTo(x0, yy); started = true; } else ctx.lineTo(x0, yy);
       ctx.lineTo(x1, yy);
     } else if (!started) {

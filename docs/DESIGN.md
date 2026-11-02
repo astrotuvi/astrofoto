@@ -84,7 +84,7 @@ In this document, pixel coordinates are **1-based**, the convention used by FITS
 | `R` (Johnson) and `r` (Sloan) are different filters. | Filter names are **case-sensitive** and never changed. Bias and dark frames ignore `FILTER`. |
 | The same bright stars appear in all 18 lights. The drift is up to about 4.2 px (V frames), with no rotation (< 0.03°). It wanders rather than growing steadily: the last frame is 2.3 px from the first. Only 4–6 stars stand out in g and B; the bright knots of M57 look like stars to a simple peak finder. | Alignment corrects **shift only**, measured to a fraction of a pixel (scatter 0.05–0.2 px). Star finding rejects peaks that do not stand out at least 5× the scatter of the ring around them. |
 | There are 3 lights per filter. | **Median** stacking is the default: it removes cosmic rays. Sigma clipping is pointless with 3 frames. |
-| The sky background differs by filter, roughly 560–1300 ADU above bias in the stacks (B lowest), with a noise of 20–31 ADU. The brightest stacked pixel ranges from about 14 000 ADU (B) to 59 000 ADU (r). | An automatic black point for each channel: the background median, which makes the sky equally dark in every channel. The white points differ by channel, so the colour balance is set per channel. |
+| The sky background differs by filter, roughly 560–1300 ADU above bias in the stacks (B lowest), with a noise of 20–31 ADU. The brightest stacked pixel ranges from about 14 000 ADU (B) to 59 000 ADU (r). | An automatic black point for each channel, just below the background median, which makes the sky the same dark grey in every channel. The white points differ by channel, so the colour balance is set per channel. |
 | The brightest star peaks at about 62 000 ADU raw in r and i. | A saturation overlay, with an adjustable level (default 60 000 ADU raw). |
 | Plate scale 206 265 × 0.026 / 12 000 ≈ 0.45″/px, so the field is about 3.8′. | Measuring tools can show arcseconds, computed from header values. |
 
@@ -226,11 +226,11 @@ In the app the step has three parts: **Käsitsi** (by hand: reference, model, cl
 ### 3.4 Colour
 
 - One or more **compositions**, each mapping stacked filter images to the R, G and B channels. The student chooses the filters; the table of stacks shows each filter's wavelength, and a check says whether the mapping goes from short (blue) to long (red) wavelength, is reversed, mixed ("false colour") or unknown. The same filter may go into two channels.
-- Settings for each channel: black point (the "Auto" button sets it to the background median), white point, weight (colour balance). A newly chosen filter starts at the full range of its stack (minimum to maximum), so the linear image looks nearly black, as in §4.2.
+- Settings for each channel: black point (the "Auto" button sets it just below the background median, so the sky is shown at 10 % grey for the current white point, weight and stretch; the slider reaches 50 σ below the background for a lighter sky), white point, weight (colour balance). A newly chosen filter starts at the full range of its stack (minimum to maximum), so the linear image looks nearly black, as in §4.2.
 - Channel brightness = stretch(weight × (value − black) / (white − black)), clipped to 0–1.
 - Stretch: linear or asinh, `asinh(t·x) / asinh(t)` with strength t (1–1000, default 100), applied to each channel separately.
 - The image updates live as settings change: sliders change the image and the histograms without rebuilding the panel. The white point slider is logarithmic above the background, so faint and bright settings both fit.
-- The histogram of each channel is shown, around the background, with the black and white points.
+- The histogram of each channel is shown with the black and white points. It runs from the faintest to the brightest pixel (or to the black or white point, if they are outside), so both points are always visible. The ADU axis is asinh((x − background) / 3σ): linear near the background, so the sky peak keeps its shape, and logarithmic further out on both sides.
 - **Check:** the background brightness of each channel on the 0–255 scale. It should be equal (neutral sky); otherwise the app names the tint and points to "Auto" and the weights.
 - The colour image is shown in the viewer, where the pixel readout gives the stack value behind each channel. It has no display range or measuring tabs of its own.
 - In the app the step has two parts: **Värvipilt** (colour image) and **Failide salvestamine** (saving files, §3.5).

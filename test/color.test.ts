@@ -59,9 +59,13 @@ describe('colour', () => {
     c.stretch = { type: 'asinh', strength: 1000 };
     const before = backgroundLevels(c, (f) => images[f]);
     expect(before.B).toBeGreaterThan(before.R!);
-    for (const ch of ['R', 'G', 'B'] as const) c.channels[ch].black = autoBlack(images[c.channels[ch].filter!]);
-    expect(c.channels.R.black).toBe(1200);
-    expect(backgroundLevels(c, (f) => images[f])).toEqual({ R: 0, G: 0, B: 0 });
+    for (const ch of ['R', 'G', 'B'] as const) c.channels[ch].black = autoBlack(images[c.channels[ch].filter!], c.channels[ch], c.stretch);
+    expect(c.channels.R.black).toBeLessThan(1200);
+    // 10 % grey, i.e. 25.5 on the 0–255 scale
+    for (const v of Object.values(backgroundLevels(c, (f) => images[f]))) expect(Math.abs(v - 25.5)).toBeLessThanOrEqual(0.5);
+    c.stretch = { type: 'linear', strength: 1000 };
+    c.channels.R.black = autoBlack(images.R, c.channels.R, c.stretch);
+    expect(Math.abs(backgroundLevels(c, (f) => images[f]).R! - 25.5)).toBeLessThanOrEqual(0.5);
   });
 
   it('checks that the filters go from short to long wavelength', () => {

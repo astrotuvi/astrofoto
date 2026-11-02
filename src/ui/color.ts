@@ -10,13 +10,13 @@ import { h } from '../dom';
 import { exportBase, type FitsExport, fitsBytes, fitsExports, fitsZip, pngBytes } from '../export';
 import { Cancelled, saveFile } from '../fileio';
 import { bottomUp, type FitsImage } from '../fits';
-import { fmtSig, type Key, t } from '../i18n';
+import { type Key, t } from '../i18n';
 import { filterInfo } from '../instrument/profile';
 import { stackImage } from '../stack';
 import { state } from '../state';
-import { finite, histogram, sortedPercentile } from '../stats';
+import { finite } from '../stats';
 import { tasksFor } from '../tasks';
-import { createPlotCanvas, drawPlot } from '../tools/plot';
+import { asinhScale, createPlotCanvas, drawPlot } from '../tools/plot';
 import type { Channel, ChannelSettings, Composition } from '../types';
 import { renderComments } from './comments';
 import { renderWhy } from './explain';
@@ -301,8 +301,8 @@ export class ColorStep {
     if (!img) return null;
     const b = background(img);
     const noise = Math.max(b.noise, 1e-6);
-    // Black: linear, from the faintest pixel to well above the background
-    const lo = Math.min(b.min, s.black);
+    // Black: linear, from well below the background (a lighter sky) to well above it
+    const lo = Math.min(b.min, s.black, b.median - 50 * noise);
     const hi = Math.max(b.median + 20 * noise, s.black);
     // White: logarithmic distance above the background, so faint and bright settings both fit
     const near = 3 * noise;
@@ -324,7 +324,7 @@ export class ColorStep {
           type: 'button',
           title: t('color.autoTip'),
           onclick: () => {
-            this.setChannel(ch, { black: autoBlack(img) }, false);
+            this.setChannel(ch, { black: autoBlack(img, cur(), this.current()!.stretch) }, false);
             this.show(c);
           },
         }, t('color.auto')),
@@ -367,35 +367,51 @@ export class ColorStep {
     return h('div', { class: 'slider-row', title: o.tip }, h('span', { class: 'slider-label' }, o.label), range, num, o.extra);
   }
 
-  /** Histogram of a channel's stack around the background, with the black and white points. */
+  /**
+   * Histogram of a channel's stack from its faintest to its brightest pixel, on an asinh axis
+   * around the background: the sky peak keeps its shape and the faint and bright tails both fit.
+   */
   private histogram(img: FitsImage, settings: () => ChannelSettings): HTMLElement {
     const b = background(img);
     const v = sorted(img);
-    const s = settings();
-    const lo = Math.min(b.median - 10 * b.noise, s.black);
-    let hi = Math.max(sortedPercentile(v, 99), b.median + 10 * b.noise);
-    if (!(hi > lo)) hi = lo + 1;
-    const width = (hi - lo) / HIST_BINS;
-    const counts = histogram(v, lo, hi, HIST_BINS).counts;
-    const xs = Array.from(counts, (_, i) => lo + i * width);
+    const scale = asinhScale(b.median, 3 * Math.max(b.noise, 1e-6));
     const canvas = createPlotCanvas(HIST_HEIGHT);
+    // The range follows the black and white points; the counts are recomputed only when it changes
+    let key = '';
+    let xs: number[] = [];
+    let counts: number[] = [];
     const draw = () => {
-      if (!canvas.isConnected || !canvas.clientWidth) return;
       const cur = settings();
+      const lo = scale.to(Math.min(b.min, cur.black));
+      let hi = scale.to(Math.max(b.max, cur.white));
+      if (!(hi > lo)) hi = lo + 1;
+      if (key !== `${lo} ${hi}`) {
+        key = `${lo} ${hi}`;
+        const du = (hi - lo) / HIST_BINS;
+        xs = Array.from({ length: HIST_BINS }, (_, i) => scale.from(lo + i * du));
+        counts = new Array<number>(HIST_BINS).fill(0);
+        // v is sorted, so one pass over the bin edges is enough
+        let k = 0;
+        for (const x of v) {
+          while (k + 1 < HIST_BINS && x >= xs[k + 1]) k++;
+          if (x >= xs[0]) counts[k]++;
+        }
+      }
+      if (!canvas.isConnected || !canvas.clientWidth) return;
       drawPlot(canvas, xs, counts, {
         xLabel: t('axis.adu'),
         yLabel: t('axis.count'),
         style: 'steps',
         logY: true,
+        xScale: scale,
         height: HIST_HEIGHT,
         markers: [{ x: cur.black, color: '#2e7d32' }, { x: cur.white, color: '#c62828' }],
       });
     };
+    draw();
     requestAnimationFrame(draw);
     this.live.push(draw);
-    const details = h('details', { class: 'channel-hist', open: true },
-      h('summary', {}, t('color.histogram', { bin: fmtSig(width, 3) })),
-      canvas);
+    const details = h('details', { class: 'channel-hist', open: true }, h('summary', {}, t('color.histogram')), canvas);
     // A closed panel has no width to draw in
     details.addEventListener('toggle', () => details.open && draw());
     return details;

@@ -47,6 +47,8 @@ export interface ViewerEvents {
 
 const MIN_SCALE = 1 / 16;
 const MAX_SCALE = 32;
+/** How far past its edge a large image can be panned, in CSS pixels. */
+const PAN_MARGIN = 32;
 
 export class Viewer {
   readonly element: HTMLDivElement;
@@ -97,7 +99,10 @@ export class Viewer {
     }
     this.renderBitmap();
     if (this.fitted) this.fit();
-    else this.draw();
+    else {
+      this.clampOffset();
+      this.draw();
+    }
   }
 
   setRange(black: number, white: number, scale: DisplayScale = 'linear'): void {
@@ -199,6 +204,7 @@ export class Viewer {
     this.offsetY = cy - ((cy - this.offsetY) * s) / this.scale;
     this.scale = s;
     this.fitted = false;
+    this.clampOffset();
     this.events.zoom?.(this.scale);
     this.draw();
   }
@@ -215,7 +221,22 @@ export class Viewer {
     this.canvas.style.width = `${rect.width}px`;
     this.canvas.style.height = `${rect.height}px`;
     if (this.fitted) this.fit();
-    else this.draw();
+    else {
+      this.clampOffset();
+      this.draw();
+    }
+  }
+
+  /** Keeps the image in view: a small image stays inside the canvas, a large one covers it up to a margin. */
+  private clampOffset(): void {
+    if (!this.image) return;
+    const margin = PAN_MARGIN * (window.devicePixelRatio || 1);
+    const clamp = (offset: number, size: number, view: number) =>
+      size <= view
+        ? Math.min(view - size, Math.max(0, offset))
+        : Math.min(margin, Math.max(view - size - margin, offset));
+    this.offsetX = clamp(this.offsetX, this.image.width * this.scale, this.canvas.width);
+    this.offsetY = clamp(this.offsetY, this.image.height * this.scale, this.canvas.height);
   }
 
   private renderBitmap(): void {
@@ -305,6 +326,7 @@ export class Viewer {
       this.offsetX = d.ox + cx - d.startX;
       this.offsetY = d.oy + cy - d.startY;
       this.fitted = false;
+      this.clampOffset();
       this.draw();
     } else if (d.mode === 'box' && moved) {
       const a = this.clampToImage({ x: d.ix, y: d.iy });

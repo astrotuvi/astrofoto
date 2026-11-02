@@ -52,9 +52,20 @@ export function background(img: FitsImage): Background {
   return b;
 }
 
-/** The "Auto" black point: the background median, so the sky is equally dark in every channel. */
-export function autoBlack(img: FitsImage): number {
-  return background(img).median;
+/** Display level 0–1 of the sky background after "Auto": dark grey, so the faint sky noise stays visible. */
+export const SKY_LEVEL = 0.1;
+
+/**
+ * The "Auto" black point: just below the background median, so that the sky is shown at `level`
+ * in every channel, whatever its white point and weight.
+ */
+export function autoBlack(img: FitsImage, c: ChannelSettings, s: Stretch, level = SKY_LEVEL): number {
+  const m = background(img).median;
+  // The scaled value x that the stretch shows at `level`, then black from weight·(m − black)/(white − black) = x
+  const x = s.type === 'asinh' ? Math.sinh(level * Math.asinh(s.strength)) / s.strength : level;
+  const k = x / (c.weight || 1);
+  if (!(k > 0) || k >= 1 || !(c.white > m)) return m;
+  return (m - k * c.white) / (1 - k);
 }
 
 /**
