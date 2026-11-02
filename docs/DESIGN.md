@@ -2,7 +2,7 @@
 
 A browser app for reducing monochrome CCD images in FITS format and combining them into colour images. It is built as a learning tool for an after-school astronomy project.
 
-Status: milestones 1–6 (viewer, master frames, calibration and project file, alignment and stacking, colour and export, versions and mentor mode) implemented. Last updated 2026-11-02.
+Status: milestones 1–7 (viewer, master frames, calibration and project file, alignment and stacking, colour and export, versions and mentor mode, report) implemented. Last updated 2026-11-02.
 
 ---
 
@@ -380,9 +380,12 @@ The report uses only structures that survive copying into Google Docs and Word w
 #### Technical notes
 
 - The report is built once as a **simple document model**: a list of headings, paragraphs, tables, figures and captions. It is then rendered three ways: as HTML for the report page and copying, as `.docx`, and as figure files. This keeps all three versions consistent.
-- `.docx` is generated in the browser with the `docx` library, so it works offline.
+- `.docx` is written in the browser as plain Office Open XML and zipped with `fflate`, so it works offline and adds no library. The report only needs heading styles named "heading 1–3", paragraphs with bold and italic, tables with simple cells and direct borders, inline PNG images 16 cm wide, and a "caption" style. The text font is Arial, the Google Docs default, so pasted text looks native.
+- "Lisa aruandesse" is in the viewer: next to the image picker (the image as shown, with its display range, the zoomed part and the box or profile line of the open tab; a colour image with a copy of its settings), and under the profile, histogram and box statistics results. On the report page the student can also add their own text paragraphs.
+- Captions left empty are written by the app in the current language, e.g. *"Koondkaader: tasaväljakaader g. Hallskaala 0,971…1,055."* Figures and tables are numbered through the whole report; figure files are named after the number and the item, e.g. `joonis-01-koondkaader-tasavaljakaader-g.png`.
+- Figures whose image does not exist any more (a step undone, a version removed) show a note instead of the image.
 - The **"Kopeeri"** button writes both `text/html` and `text/plain` to the clipboard (Clipboard API). "Kopeeri pilt" writes `image/png`. This works in Chrome, Edge, Safari and recent Firefox versions.
-- Whether Google Docs accepts images embedded in a copied HTML section is not reliable (images given as `data:` URLs are often dropped). So sections are copied as text and tables, and images are copied separately. This must be tested in milestone 7 with the current Google Docs. If embedded images turn out to paste reliably, sections can include them.
+- Whether Google Docs accepts images embedded in a copied HTML section is not reliable (images given as `data:` URLs are often dropped). So sections are copied as text and tables (a figure leaves its caption, so the image can be pasted above it), and images are copied separately. Pasting into the current Google Docs and Word still has to be tried by hand (§8). If embedded images turn out to paste reliably, sections can include them.
 - Sending the report directly to Google Docs through the Google API is a **non-goal**: it needs a Google sign-in and a connection, which conflicts with offline use and keeping data on the student's computer.
 
 ### 4.7 Mentor mode
@@ -439,7 +442,7 @@ The first time "eelpingekaader" appears in a text, "(bias-kaader)" follows it in
 | Processing | Main thread, `Float32Array`, everything kept in memory |
 | Zip | `fflate` |
 | Markdown | `marked` |
-| Report `.docx` | `docx` |
+| Report `.docx` | written directly as Office Open XML, zipped with `fflate` |
 | Offline | `vite-plugin-pwa` (service worker), `vite-plugin-singlefile` (offline file) |
 | Hosting | GitHub Pages (static files) |
 
@@ -612,10 +615,15 @@ interface Task {
 
 interface ReportItem {
   id: string;
-  kind: 'figure' | 'table' | 'measurement' | 'text';
-  source: string;                // what produced it, e.g. "flat:g:profile"
-  snapshot: Record<string, unknown>;  // settings needed to redraw it (view, region, stretch, …)
-  caption: string;               // edited by the student
+  snapshot:                      // what to redraw; image ids as in the viewer, e.g. 'master:flat:g'
+    | { type: 'image'; imageId: string; range: { mode; black; white }; view: Region | null; box?; line? }
+    | { type: 'color'; composition: Composition; view: Region | null }   // a copy of its settings
+    | { type: 'profile'; imageId: string; axis: 'row' | 'column'; index: number }
+    | { type: 'histogram'; imageId: string; box: Region | null; log: boolean; range: 'full' | 'clipped'; black; white }
+    | { type: 'boxStats'; imageId: string; box: Region }                  // becomes a table
+    | { type: 'text'; text: string };                                     // the student's own paragraph
+  caption: string;               // edited by the student; '' = automatic, in the current language
+  added: string;
 }
 ```
 
@@ -654,11 +662,10 @@ src/
   log.ts               processing log
   report/
     model.ts           report document model (headings, paragraphs, tables, figures, captions)
-    build.ts           builds the model from the project
+    build.ts           builds the model from the project, automatic captions
     figures.ts         renders figures to PNG (fixed width, labels, scale bar, white background)
-    html.ts            report page + clipboard copy
-    docx.ts            .docx export
-    zip.ts             figures zip
+    html.ts            report page blocks + clipboard copy
+    docx.ts            .docx export and the figures zip
   offline.ts           service worker registration, update prompt
   tools/
     plot.ts            line/step plots with labelled axes
@@ -678,6 +685,7 @@ src/
     files.ts  profile.ts  calibrate.ts  align.ts  color.ts  resume.ts  glossary.ts  settings.ts
     viewerpanel.ts     viewer with toolbar, readout and tool tabs
     compare.ts         "Võrdle" tab: blink/split, versions list
+    report.ts          report page: sections, items, captions, downloads, print
     comments.ts        mentor comments on steps and tasks
     header.ts          FITS header viewer
     explain.ts         "Miks?" / "Uuri lähemalt" panel
@@ -709,6 +717,7 @@ Every milestone includes Estonian and English texts for its own features.
 
 ## 8. Open questions
 
+- **Pasting the report.** The `.docx` opens in macOS Quick Look and `textutil`; it still has to be opened in Word and Google Docs, and the copied sections and images pasted into both, by hand.
 - **Test data in development.** Tests and local development use `data/`, which is not in the repository. Automated tests that need FITS files should use small synthetic files generated by the test code, so the repository stays free of data.
 - **Distance of M57** for task 13: the value given in the task text (about 790 pc / 2600 ly from Gaia) should be checked before use.
 - **Who writes the content?** Draft explanations and tasks can be written in Estonian and English, with the mentor reviewing the Estonian text.

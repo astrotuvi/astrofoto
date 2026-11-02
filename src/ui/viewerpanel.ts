@@ -5,19 +5,18 @@ import { h } from '../dom';
 import { bottomUp } from '../fits';
 import { fmt, type Key, t } from '../i18n';
 import { term } from '../i18n/glossary';
-import { finite, sortedPercentile } from '../stats';
+import { displayRange, finite } from '../stats';
 import { stackImage } from '../stack';
 import { state } from '../state';
 import { renderBoxStats } from '../tools/boxstats';
 import { type HistogramChange, renderHistogram } from '../tools/histogram';
 import { renderProfile } from '../tools/profile';
-import { KINDS } from '../types';
+import { KINDS, type RangeMode, type ReportSnapshot } from '../types';
 import { type Marker, type ProfileAxis, type Tool, Viewer } from '../viewer';
 import { CompareTool } from './compare';
 import { renderHeader } from './header';
 
 export type Tab = 'pixel' | 'profile' | 'box' | 'histogram' | 'compare' | 'header';
-type RangeMode = 'minmax' | 'p995' | 'p99' | 'manual';
 
 const TABS: { id: Tab; label: Key; tool: Tool }[] = [
   { id: 'pixel', label: 'tab.pixel', tool: 'pixel' },
@@ -79,6 +78,8 @@ export class ViewerPanel {
   private picker: Picker | null = null;
   private colorPending = false;
   private compare: CompareTool;
+  private reportStatus = h('span', { class: 'report-status', role: 'status' });
+  private statusTimer: number | undefined;
 
   constructor() {
     this.viewer = new Viewer({
@@ -151,7 +152,7 @@ export class ViewerPanel {
   /** Rebuilds the controls, e.g. after a language change. The canvas is kept. */
   render(): void {
     this.element.replaceChildren(
-      h('div', { class: 'viewer-head' }, this.imageSelect()),
+      h('div', { class: 'viewer-head' }, this.imageSelect(), this.addButton(() => this.imageSnapshot(), 'report.addImageTip'), this.reportStatus),
       this.toolbar(),
       this.viewer.element,
       this.readout,
@@ -169,6 +170,43 @@ export class ViewerPanel {
     this.compare.setActive(this.shownTab() === 'compare');
     this.showReadout(null);
     this.renderTool();
+  }
+
+  /** A "Lisa aruandesse" button; disabled when there is nothing to add. */
+  private addButton(snapshot: () => ReportSnapshot | null, tip: Key): HTMLElement | null {
+    if (!state.selectedId || (!state.viewable(state.selectedId) && !this.isColor())) return null;
+    return h('button', {
+      type: 'button',
+      class: 'small add-report',
+      title: t(tip),
+      onclick: () => {
+        const s = snapshot();
+        if (!s) return;
+        state.addReportItem({ snapshot: s, caption: '' });
+        this.reportStatus.textContent = t('report.added');
+        clearTimeout(this.statusTimer);
+        this.statusTimer = window.setTimeout(() => (this.reportStatus.textContent = ''), 3000);
+      },
+    }, t('report.add'));
+  }
+
+  /** The image as shown: display range, zoomed part and the measuring marks of the open tab. */
+  private imageSnapshot(): ReportSnapshot | null {
+    const id = state.selectedId;
+    if (!id) return null;
+    const view = this.viewer.visibleRegion();
+    const c = state.composition(id);
+    if (c) return { type: 'color', composition: structuredClone(c), view };
+    const p = this.viewer.getProfile();
+    const box = this.viewer.getBox();
+    return {
+      type: 'image',
+      imageId: id,
+      range: { mode: this.rangeMode, black: this.black, white: this.white },
+      view,
+      box: this.tab === 'box' || (this.tab === 'histogram' && this.hist.useBox) ? box : null,
+      line: this.tab === 'profile' && p.index !== null ? { axis: p.axis, index: p.index } : null,
+    };
   }
 
   private imageSelect(): HTMLElement {
@@ -273,9 +311,7 @@ export class ViewerPanel {
     if (!v || this.rangeMode === 'manual') return;
     const s = this.sorted(v.image.data);
     if (s.length === 0) return;
-    const p = this.rangeMode === 'p995' ? 0.5 : this.rangeMode === 'p99' ? 1 : 0;
-    this.black = p ? sortedPercentile(s, p) : s[0];
-    this.white = p ? sortedPercentile(s, 100 - p) : s[s.length - 1];
+    ({ black: this.black, white: this.white } = displayRange(s, this.rangeMode));
   }
 
   private applyRange(): void {
@@ -343,6 +379,11 @@ export class ViewerPanel {
     }
   }
 
+  /** "Lisa aruandesse" under a tool's result. */
+  private toolAdd(snapshot: ReportSnapshot, tip: Key): HTMLElement {
+    return h('div', { class: 'buttons left' }, this.addButton(() => snapshot, tip));
+  }
+
   private renderTool(): void {
     if (this.isColor()) {
       this.toolArea.replaceChildren(h('div', { class: 'tool-out' },
@@ -368,27 +409,36 @@ export class ViewerPanel {
         break;
       case 'profile': {
         const p = this.viewer.getProfile();
+        const id = state.selectedId!;
         content = renderProfile({ data, width, height, axis: p.axis, index: p.index }, (axis) => {
           this.viewer.setProfileAxis(axis);
           this.renderTool();
-        });
+        }, p.index === null ? undefined : this.toolAdd({ type: 'profile', imageId: id, axis: p.axis, index: p.index }, 'report.addPlotTip'));
         break;
       }
-      case 'box':
-        content = renderBoxStats(data, width, this.viewer.getBox());
+      case 'box': {
+        const box = this.viewer.getBox();
+        content = renderBoxStats(data, width, box,
+          box ? this.toolAdd({ type: 'boxStats', imageId: state.selectedId!, box }, 'report.addTableTip') : undefined);
         break;
-      case 'histogram':
+      }
+      case 'histogram': {
+        const box = this.viewer.getBox();
         content = renderHistogram({
           data, width,
-          box: this.viewer.getBox(),
+          box,
           ...this.hist,
           black: this.black,
           white: this.white,
         }, (c: HistogramChange) => {
           Object.assign(this.hist, c);
           this.renderTool();
-        });
+        }, this.toolAdd({
+          type: 'histogram', imageId: state.selectedId!, box: this.hist.useBox ? box : null,
+          log: this.hist.log, range: this.hist.range, black: this.black, white: this.white,
+        }, 'report.addPlotTip'));
         break;
+      }
       case 'compare':
         content = this.compare.render();
         break;

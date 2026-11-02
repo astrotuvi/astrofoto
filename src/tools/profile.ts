@@ -21,7 +21,7 @@ export function profileValues(data: Float32Array, width: number, height: number,
   return out;
 }
 
-export function renderProfile(input: ProfileInput, onAxis: (axis: ProfileAxis) => void): HTMLElement {
+export function renderProfile(input: ProfileInput, onAxis: (axis: ProfileAxis) => void, extra?: HTMLElement): HTMLElement {
   const axisSelect = h('div', { class: 'segmented', role: 'group' },
     (['row', 'column'] as ProfileAxis[]).map((a) =>
       h('button', {
@@ -38,7 +38,7 @@ export function renderProfile(input: ProfileInput, onAxis: (axis: ProfileAxis) =
   const xs = Array.from(ys, (_, i) => i + 1);
   const canvas = createPlotCanvas();
   const title = t(input.axis === 'row' ? 'profile.titleRow' : 'profile.titleColumn', { n: String(input.index + 1) });
-  const out = h('div', { class: 'tool-out' }, axisSelect, h('p', { class: 'plot-title' }, title), canvas);
+  const out = h('div', { class: 'tool-out' }, axisSelect, h('p', { class: 'plot-title' }, title), canvas, extra);
   requestAnimationFrame(() =>
     drawPlot(canvas, xs, ys, {
       xLabel: input.axis === 'row' ? t('axis.x') : t('axis.y'),

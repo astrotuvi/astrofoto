@@ -1,6 +1,6 @@
 // Basic statistics on pixel data. NaN values are ignored.
 
-import type { Region } from './types';
+import type { RangeMode, Region } from './types';
 
 export interface Stats {
   n: number;
@@ -126,4 +126,14 @@ export function histogram(v: Float32Array, lo: number, hi: number, bins: number)
     else if (v[i] === hi) counts[bins - 1]++;
   }
   return { lo, hi, binWidth, counts };
+}
+
+/** Black and white display levels of a sorted image for a range mode; 'manual' keeps the given ones. */
+export function displayRange(sorted: Float32Array, mode: RangeMode, black = 0, white = 1): { black: number; white: number } {
+  if (mode === 'manual' || sorted.length === 0) return { black, white };
+  const p = mode === 'p995' ? 0.5 : mode === 'p99' ? 1 : 0;
+  return {
+    black: p ? sortedPercentile(sorted, p) : sorted[0],
+    white: p ? sortedPercentile(sorted, 100 - p) : sorted[sorted.length - 1],
+  };
 }

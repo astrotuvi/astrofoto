@@ -2,7 +2,10 @@
 
 import type { FitsImage } from './fits';
 import type { AutoResult } from './align';
-import type { CombineMethod, Composition, FrameMeta, InstrumentProfile, Kind, MentorComment, ProcessingSettings, Region, StepId, Version } from './types';
+import type {
+  CombineMethod, Composition, FrameMeta, InstrumentProfile, Kind, MentorComment, ProcessingSettings, Region, ReportItem, ReportSectionId,
+  ReportSettings, StepId, Version,
+} from './types';
 
 export interface Frame {
   meta: FrameMeta;
@@ -76,7 +79,7 @@ export interface Answer {
 }
 
 export type ChangeKind = 'frames' | 'selection' | 'profile' | 'settings' | 'masters' | 'calibrated' | 'aligned' | 'stacks'
-  | 'auto' | 'compositions' | 'versions' | 'comments' | 'mentor' | 'steps' | 'answers' | 'overlay' | 'info' | 'log' | 'saved';
+  | 'auto' | 'compositions' | 'versions' | 'comments' | 'report' | 'mentor' | 'steps' | 'answers' | 'overlay' | 'info' | 'log' | 'saved';
 
 /** Changes that do not need saving. */
 const TRANSIENT = new Set<ChangeKind>(['selection', 'overlay', 'saved', 'masters', 'calibrated', 'aligned', 'stacks', 'auto', 'mentor']);
@@ -123,6 +126,8 @@ class State {
   versionProducts = new Map<string, Products>();
   /** Mentor comments, keyed by 'step:<id>' or 'task:<id>'. */
   comments: Record<string, MentorComment[]> = {};
+  /** Report sections and the figures and measurements added to it. */
+  report: ReportSettings = { sections: {}, items: [] };
   info: ProjectInfo = newInfo();
   log: LogEntry[] = [];
   /** Changed since the last save. */
@@ -225,6 +230,42 @@ class State {
     this.emit('comments');
   }
 
+  addReportItem(item: Omit<ReportItem, 'id' | 'added'>): ReportItem {
+    let n = 1;
+    while (this.report.items.some((x) => x.id === `r${n}`)) n++;
+    const full = { ...item, id: `r${n}`, added: new Date().toISOString() };
+    this.report.items.push(full);
+    this.emit('report');
+    return full;
+  }
+
+  updateReportItem(id: string, patch: Partial<Pick<ReportItem, 'caption' | 'snapshot'>>): void {
+    const item = this.report.items.find((x) => x.id === id);
+    if (!item) return;
+    Object.assign(item, patch);
+    this.emit('report');
+  }
+
+  removeReportItem(id: string): void {
+    this.report.items = this.report.items.filter((x) => x.id !== id);
+    this.emit('report');
+  }
+
+  /** Moves an item up (−1) or down (+1) in the report. */
+  moveReportItem(id: string, by: -1 | 1): void {
+    const list = this.report.items;
+    const i = list.findIndex((x) => x.id === id);
+    const j = i + by;
+    if (i < 0 || j < 0 || j >= list.length) return;
+    [list[i], list[j]] = [list[j], list[i]];
+    this.emit('report');
+  }
+
+  setReportSection(id: ReportSectionId, on: boolean): void {
+    this.report.sections[id] = on;
+    this.emit('report');
+  }
+
   addComposition(c: Composition): void {
     this.compositions.push(c);
     this.emit('compositions');
@@ -279,12 +320,13 @@ class State {
     this.versions = [];
     this.versionProducts.clear();
     this.comments = {};
+    this.report = { sections: {}, items: [] };
     this.info = newInfo();
     this.log = [];
     this.trimPreview = null;
     this.nextId = 1;
     this.select(null);
-    for (const k of ['frames', 'profile', 'settings', 'masters', 'calibrated', 'aligned', 'stacks', 'auto', 'compositions', 'versions', 'comments', 'steps', 'answers', 'info', 'log'] as const) this.emit(k);
+    for (const k of ['frames', 'profile', 'settings', 'masters', 'calibrated', 'aligned', 'stacks', 'auto', 'compositions', 'versions', 'comments', 'report', 'steps', 'answers', 'info', 'log'] as const) this.emit(k);
     this.markSaved();
   }
 

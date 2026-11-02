@@ -161,6 +161,22 @@ export class Viewer {
     return this.scale;
   }
 
+  /** The part of the image on screen, in 0-based file coordinates; null when all of it is shown. */
+  visibleRegion(): Region | null {
+    const img = this.image;
+    if (!img) return null;
+    const x0 = Math.max(0, Math.floor(-this.offsetX / this.scale));
+    const x1 = Math.min(img.width - 1, Math.ceil((this.canvas.width - this.offsetX) / this.scale) - 1);
+    const r0 = Math.max(0, Math.floor(-this.offsetY / this.scale));
+    const r1 = Math.min(img.height - 1, Math.ceil((this.canvas.height - this.offsetY) / this.scale) - 1);
+    if (x0 > x1 || r0 > r1) return null;
+    if (x0 === 0 && r0 === 0 && x1 === img.width - 1 && r1 === img.height - 1) return null;
+    // Display rows run the other way when the file starts at the bottom
+    const y0 = img.flipY ? img.height - 1 - r1 : r0;
+    const y1 = img.flipY ? img.height - 1 - r0 : r1;
+    return { x0, x1, y0, y1 };
+  }
+
   fit(): void {
     if (!this.image) return this.draw();
     const { width, height } = this.canvas;

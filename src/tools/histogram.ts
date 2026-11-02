@@ -30,18 +30,34 @@ function toggle(label: string, on: boolean, onclick: () => void): HTMLButtonElem
   return h('button', { type: 'button', class: on ? 'active' : '', 'aria-pressed': String(on), onclick }, label);
 }
 
-export function renderHistogram(input: HistogramInput, change: (c: HistogramChange) => void): HTMLElement {
-  const useBox = input.useBox && !!input.box;
-  const v = values(input.data, input.width, useBox ? input.box! : undefined).sort();
-  const lo = input.range === 'full' ? v[0] : sortedPercentile(v, 0.1);
-  let hi = input.range === 'full' ? v[v.length - 1] : sortedPercentile(v, 99.9);
+export interface HistogramData {
+  xs: number[];
+  counts: Uint32Array;
+  binWidth: number;
+}
+
+/** The bins of the whole image or the box. */
+export function histogramData(data: Float32Array, width: number, box: Region | null, range: 'full' | 'clipped'): HistogramData {
+  const v = values(data, width, box ?? undefined).sort();
+  const lo = range === 'full' ? v[0] : sortedPercentile(v, 0.1);
+  let hi = range === 'full' ? v[v.length - 1] : sortedPercentile(v, 99.9);
   if (!(hi > lo)) hi = lo + 1;
   // Whole-number bins for integer data, so no bin is empty only because of rounding
   const integer = v.every(Number.isInteger);
-  const width = integer ? Math.max(1, Math.ceil((hi - lo) / BINS)) : (hi - lo) / BINS;
-  const bins = integer ? Math.max(1, Math.ceil((hi - lo + 1) / width)) : BINS;
-  const hist = histogram(v, lo, lo + bins * width, bins);
-  const xs = Array.from(hist.counts, (_, i) => lo + i * width);
+  const binWidth = integer ? Math.max(1, Math.ceil((hi - lo) / BINS)) : (hi - lo) / BINS;
+  const bins = integer ? Math.max(1, Math.ceil((hi - lo + 1) / binWidth)) : BINS;
+  const counts = histogram(v, lo, lo + bins * binWidth, bins).counts;
+  return { xs: Array.from(counts, (_, i) => lo + i * binWidth), counts, binWidth };
+}
+
+/** Black and white markers drawn on a histogram. */
+export function rangeMarkers(black: number, white: number): { x: number; color: string }[] {
+  return [{ x: black, color: '#2e7d32' }, { x: white, color: '#c62828' }];
+}
+
+export function renderHistogram(input: HistogramInput, change: (c: HistogramChange) => void, extra?: HTMLElement): HTMLElement {
+  const useBox = input.useBox && !!input.box;
+  const { xs, counts, binWidth } = histogramData(input.data, input.width, useBox ? input.box : null, input.range);
 
   const canvas = createPlotCanvas();
   const out = h('div', { class: 'tool-out' },
@@ -61,18 +77,16 @@ export function renderHistogram(input: HistogramInput, change: (c: HistogramChan
     ),
     !input.box && input.useBox ? h('p', { class: 'hint' }, t('hist.noBox')) : null,
     canvas,
-    h('p', { class: 'hint' }, t('hist.legend', { bin: fmtSig(width, 3) })),
+    h('p', { class: 'hint' }, t('hist.legend', { bin: fmtSig(binWidth, 3) })),
+    extra,
   );
   requestAnimationFrame(() =>
-    drawPlot(canvas, xs, hist.counts, {
+    drawPlot(canvas, xs, counts, {
       xLabel: t('axis.adu'),
       yLabel: t('axis.count'),
       style: 'steps',
       logY: input.log,
-      markers: [
-        { x: input.black, color: '#2e7d32' },
-        { x: input.white, color: '#c62828' },
-      ],
+      markers: rangeMarkers(input.black, input.white),
     }));
   return out;
 }

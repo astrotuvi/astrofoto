@@ -14,6 +14,11 @@ export interface PlotOptions {
   integerX?: boolean;
   /** CSS pixels; the canvas must be created with the same height. */
   height?: number;
+  /** For figures drawn off screen: width in CSS pixels, pixel ratio, colours and a background. */
+  width?: number;
+  pixelRatio?: number;
+  colors?: { fg: string; grid: string; line: string };
+  background?: string;
 }
 
 const DEFAULT_HEIGHT = 220;
@@ -43,19 +48,23 @@ function tickDigits(values: number[]): number {
 }
 
 export function drawPlot(canvas: HTMLCanvasElement, xs: ArrayLike<number>, ys: ArrayLike<number>, opt: PlotOptions): void {
-  const dpr = window.devicePixelRatio || 1;
-  const cssWidth = canvas.clientWidth || 400;
+  const dpr = opt.pixelRatio ?? (window.devicePixelRatio || 1);
+  const cssWidth = opt.width ?? (canvas.clientWidth || 400);
   const plotHeight = opt.height ?? DEFAULT_HEIGHT;
   canvas.width = Math.round(cssWidth * dpr);
   canvas.height = Math.round(plotHeight * dpr);
   const ctx = canvas.getContext('2d')!;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-  const style = getComputedStyle(canvas);
-  const fg = style.getPropertyValue('--text').trim() || '#222';
-  const muted = style.getPropertyValue('--border').trim() || '#ccc';
-  const line = style.getPropertyValue('--accent').trim() || '#1565c0';
+  const style = opt.colors ? null : getComputedStyle(canvas);
+  const fg = opt.colors?.fg ?? (style!.getPropertyValue('--text').trim() || '#222');
+  const muted = opt.colors?.grid ?? (style!.getPropertyValue('--border').trim() || '#ccc');
+  const line = opt.colors?.line ?? (style!.getPropertyValue('--accent').trim() || '#1565c0');
   ctx.clearRect(0, 0, cssWidth, plotHeight);
+  if (opt.background) {
+    ctx.fillStyle = opt.background;
+    ctx.fillRect(0, 0, cssWidth, plotHeight);
+  }
   ctx.font = '11px system-ui, sans-serif';
 
   const n = xs.length;

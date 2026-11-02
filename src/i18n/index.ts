@@ -33,7 +33,8 @@ export function setLang(next: Lang): void {
   } catch {
     // not saved; the choice still applies until the page is closed
   }
-  document.documentElement.lang = next;
+  // Tests run without a document
+  if (typeof document !== 'undefined') document.documentElement.lang = next;
   for (const fn of listeners) fn();
 }
 

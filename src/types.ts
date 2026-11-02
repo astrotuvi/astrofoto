@@ -120,3 +120,53 @@ export interface MentorComment {
   text: string;
   date: string;
 }
+
+/** How an image is mapped to grey: from the faintest to the brightest pixel, percentiles, or set by hand. */
+export type RangeMode = 'minmax' | 'p995' | 'p99' | 'manual';
+
+export interface DisplayRange {
+  mode: RangeMode;
+  /** Used for 'manual'; for the other modes they are recomputed from the image. */
+  black: number;
+  white: number;
+}
+
+/**
+ * What a report item shows and how to redraw it (§4.6). Images are not stored: figures are drawn
+ * again from the current images, in the current language, when the report is shown or exported.
+ * Image ids are those of the viewer (e.g. 'master:flat:g', 'cal:<frame id>', 'v:<version>:stack:V').
+ */
+export type ReportSnapshot =
+  | {
+    type: 'image';
+    imageId: string;
+    range: DisplayRange;
+    /** Part of the image shown when zoomed in, in 0-based file coordinates; null = the whole image. */
+    view: Region | null;
+    /** Measuring marks drawn on the figure. */
+    box?: Region | null;
+    line?: { axis: 'row' | 'column'; index: number } | null;
+  }
+  /** A colour image with the settings it had when added. */
+  | { type: 'color'; composition: Composition; view: Region | null }
+  | { type: 'profile'; imageId: string; axis: 'row' | 'column'; index: number }
+  | { type: 'histogram'; imageId: string; box: Region | null; log: boolean; range: 'full' | 'clipped'; black: number; white: number }
+  | { type: 'boxStats'; imageId: string; box: Region }
+  /** A paragraph written by the student. */
+  | { type: 'text'; text: string };
+
+export interface ReportItem {
+  id: string;
+  snapshot: ReportSnapshot;
+  /** Written by the student; '' = the automatic caption in the current language. */
+  caption: string;
+  added: string;
+}
+
+export type ReportSectionId = 'title' | 'data' | 'processing' | 'items' | 'tasks' | 'colour' | 'mentorComments';
+
+export interface ReportSettings {
+  /** Sections switched on or off; missing = the default (all on except the mentor's comments). */
+  sections: Partial<Record<ReportSectionId, boolean>>;
+  items: ReportItem[];
+}

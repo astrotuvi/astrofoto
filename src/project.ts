@@ -8,7 +8,7 @@ import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import { readFits } from './fits';
 import { describeFrame } from './instrument/profile';
 import { type Answer, type Frame, type LogEntry, type ProjectInfo, type StepState, defaultSettings, state } from './state';
-import type { Composition, FrameMeta, InstrumentProfile, MentorComment, ProcessingSettings, StepId, Version } from './types';
+import type { Composition, FrameMeta, InstrumentProfile, MentorComment, ProcessingSettings, ReportSettings, StepId, Version } from './types';
 
 declare const __APP_VERSION__: string;
 
@@ -31,6 +31,7 @@ interface ProjectJson {
   hintsUsed: Record<string, number>;
   log: LogEntry[];
   mentorComments: Record<string, MentorComment[]>;
+  report: ReportSettings;
   // Reserved for a later milestone, kept so older files stay readable
   taskSettings: Record<string, Record<string, number | string>>;
 }
@@ -75,6 +76,7 @@ export function serialize(): Uint8Array {
     hintsUsed: state.hintsUsed,
     log: state.log,
     mentorComments: state.comments,
+    report: state.report,
     taskSettings: {},
   };
   const files: Record<string, Uint8Array | [Uint8Array, { level: 0 | 1 | 6 }]> = {
@@ -108,6 +110,8 @@ function migrate(json: ProjectJson): ProjectJson {
       settings: { ...defaultSettings(), ...v.settings, combine: { ...defaultSettings().combine, ...v.settings.combine } },
     })),
     mentorComments: json.mentorComments ?? {},
+    // and 0.6 and earlier no report
+    report: { sections: json.report?.sections ?? {}, items: json.report?.items ?? [] },
     hintsUsed: json.hintsUsed ?? {},
     log: json.log ?? [],
     steps: json.steps ?? {},
@@ -150,13 +154,14 @@ export function open(bytes: Uint8Array): OpenResult {
   state.compositions = json.compositions;
   state.versions = json.versions;
   state.comments = json.mentorComments;
+  state.report = json.report;
   state.steps = json.steps;
   state.answers = json.answers;
   state.hintsUsed = json.hintsUsed;
   state.log = json.log;
   // Adding the frames rebuilds the masters and calibrated frames (see masters.ts)
   state.addFrames(frames);
-  for (const k of ['info', 'settings', 'compositions', 'versions', 'comments', 'steps', 'answers', 'log'] as const) state.emit(k);
+  for (const k of ['info', 'settings', 'compositions', 'versions', 'comments', 'report', 'steps', 'answers', 'log'] as const) state.emit(k);
   state.markSaved();
 
   return compareVersions(json.appVersion, __APP_VERSION__) > 0 ? { newerApp: json.appVersion } : {};

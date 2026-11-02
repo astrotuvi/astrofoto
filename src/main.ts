@@ -11,17 +11,19 @@ import { CalibrationStep } from './ui/calibrate';
 import { ColorStep } from './ui/color';
 import { FilesStep } from './ui/files';
 import { ProjectBar } from './ui/projectbar';
+import { ReportPage } from './ui/report';
 import { renderResume, type Target } from './ui/resume';
 import { ViewerPanel } from './ui/viewerpanel';
 
 declare const __APP_VERSION__: string;
 
-type Step = 'resume' | 'files' | 'calibration' | 'align' | 'color';
+type Step = 'resume' | 'files' | 'calibration' | 'align' | 'color' | 'report';
 const STEPS: { id: Step; label: Key; ready: boolean }[] = [
   { id: 'files', label: 'step.files', ready: true },
   { id: 'calibration', label: 'step.calibration', ready: true },
   { id: 'align', label: 'step.align', ready: true },
   { id: 'color', label: 'step.color', ready: true },
+  { id: 'report', label: 'step.report', ready: true },
 ];
 
 const viewer = new ViewerPanel();
@@ -36,9 +38,11 @@ const files = new FilesStep((file) => void projectBar.openFile(file));
 const calibration = new CalibrationStep(viewer, () => go('align'));
 const align = new AlignStep(viewer, () => go('color'));
 const color = new ColorStep(viewer);
+const report = new ReportPage();
 const top = h('header', { class: 'topbar' });
 const footer = h('footer', { class: 'footer' });
 const stepArea = h('div', { class: 'step-area' });
+const layout = h('main', { class: 'layout' }, stepArea, viewer.element);
 let current: Step = 'files';
 let resumeWarning: string | undefined;
 
@@ -58,7 +62,9 @@ function lockedTip(s: (typeof STEPS)[number]): string {
 
 function show(): void {
   if (current === 'resume') stepArea.replaceChildren(renderResume(open, resumeWarning));
-  else stepArea.replaceChildren({ files, calibration, align, color }[current].element);
+  else stepArea.replaceChildren({ files, calibration, align, color, report }[current].element);
+  // The report page uses the whole width; its figures are drawn from the images, not the viewer
+  layout.classList.toggle('report-mode', current === 'report');
 }
 
 function go(step: Step): void {
@@ -66,6 +72,7 @@ function go(step: Step): void {
   calibration.setActive(step === 'calibration');
   align.setActive(step === 'align');
   color.setActive(step === 'color');
+  report.setActive(step === 'report');
   show();
   renderChrome();
   window.scrollTo({ top: 0 });
@@ -149,11 +156,7 @@ state.on((kind) => {
 document.documentElement.lang = getLang();
 renderChrome();
 show();
-document.getElementById('app')!.replaceChildren(
-  top,
-  h('main', { class: 'layout' }, stepArea, viewer.element),
-  footer,
-);
+document.getElementById('app')!.replaceChildren(top, layout, footer);
 
 /** Rebuilds everything shown, e.g. after a language change or switching mentor mode. */
 function rerender(): void {
@@ -163,6 +166,7 @@ function rerender(): void {
   if (current === 'calibration') calibration.render();
   if (current === 'align') align.render();
   if (current === 'color') color.render();
+  if (current === 'report') report.render();
   if (current === 'resume') show();
   viewer.render();
 }

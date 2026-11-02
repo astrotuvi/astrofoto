@@ -9,13 +9,17 @@ export function boxStats(data: Float32Array, width: number, box: Region): Stats 
   return stats(values(data, width, box));
 }
 
-export function renderBoxStats(data: Float32Array, width: number, box: Region | null): HTMLElement {
+/** Decimals for box statistics: normalised images (flats) have values near 1, so they need more. */
+export function statDigits(s: Stats): number {
+  return Math.abs(s.median) < 10 ? 4 : 2;
+}
+
+export function renderBoxStats(data: Float32Array, width: number, box: Region | null, extra?: HTMLElement): HTMLElement {
   if (!box) return h('div', { class: 'tool-out' }, h('p', { class: 'hint' }, t('box.hint')));
   const s = boxStats(data, width, box);
   const row = (label: string, tip: string, value: string) =>
     h('tr', {}, h('th', { title: tip }, h('span', { class: 'term' }, label)), h('td', { class: 'num' }, value));
-  // Normalised images (flats) have values near 1, so they need more decimals
-  const d = Math.abs(s.median) < 10 ? 4 : 2;
+  const d = statDigits(s);
   const w = box.x1 - box.x0 + 1;
   const hgt = box.y1 - box.y0 + 1;
   return h('div', { class: 'tool-out' },
@@ -32,5 +36,6 @@ export function renderBoxStats(data: Float32Array, width: number, box: Region | 
         row(t('stat.min'), t('stat.minTip'), fmt(s.min, d)),
         row(t('stat.max'), t('stat.maxTip'), fmt(s.max, d)),
       )),
+    extra,
   );
 }
