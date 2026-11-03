@@ -184,7 +184,7 @@ On import and before calibration, the app checks for and explains:
 ## 3. Workflow
 
 ```
-[1. Failid]  →  [2. Kalibreerimine]  →  [3. Joondamine ja liitmine]  →  [4. Värv]
+[1. Failid]  →  [2. Kalibreerimine]  →  [3. Joondamine ja liitmine]  →  [4. Värvid]
  Files            Calibration             Alignment and stacking          Colour
 ```
 

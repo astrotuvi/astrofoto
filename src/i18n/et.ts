@@ -9,7 +9,7 @@ export const et = {
   'step.files': 'Failid',
   'step.calibration': 'Kalibreerimine',
   'step.align': 'Joondamine ja liitmine',
-  'step.color': 'Värv',
+  'step.color': 'Värvid',
   'step.later': 'Tuleb järgmistes versioonides',
 
   'lang.label': 'Keel',
@@ -547,7 +547,7 @@ export const et = {
   'step.lockedStack': 'Liida enne pildid.',
   'viewer.colors': 'Värvipildid',
   'viewer.readoutColor': 'x = {x}, y = {y}: {v} ADU',
-  'pixel.color': 'Hiire all on näha iga kanali liidetud pildi väärtus. Musta ja valget punkti muudad sammus „Värv“.',
+  'pixel.color': 'Hiire all on näha iga kanali liidetud pildi väärtus. Musta ja valget punkti muudad sammus „Värvid“.',
 
   'color.title': 'Värvipilt {name}',
   'color.compose': 'Värvipilt',
@@ -815,7 +815,7 @@ export const et = {
   'log.figuresSaved': 'Salvestati {n} joonist.',
   'about.link': 'Teave',
   'about.title': 'Teave',
-  'about.intro': 'Astrofoto on õpperakendus, millega saab teleskoobi CCD-kaadritest teha värvifoto: kaadrid kalibreerida, joondada ja liita, pildi värvida ning kirjutada aruande.',
+  'about.intro': 'Astrofoto on õpperakendus, millega saab teleskoobi CCD-kaadritest teha värvifoto: kaadrid kalibreerida, joondada ja liita, värvipildiks kombineerida ning kirjutada aruande.',
   'about.version': 'Versioon {version}.',
   'about.privacy': 'Kõik andmed jäävad sinu arvutisse. Rakendus ei saada midagi internetti ega laadi midagi teistest serveritest.',
   'about.offline': 'Kasutamine ilma internetita',
