@@ -29,7 +29,7 @@ export interface FitsImage {
 }
 
 export type FitsErrorCode = 'notFits' | 'noEnd' | 'badExtension' | 'noImage' | 'truncated' | 'bitpix' | 'compressed';
-export type FitsWarning = 'multiplePlanes';
+export type FitsWarning = 'multiplePlanes' | 'colourPlanes' | 'bayer';
 
 export class FitsError extends Error {
   constructor(readonly code: FitsErrorCode, detail?: string) {
@@ -178,10 +178,13 @@ function readImage(
   const naxis = num(header.NAXIS) ?? 0;
   for (let i = 3; i <= naxis; i++) {
     if ((num(header[`NAXIS${i}`]) ?? 1) > 1) {
-      warnings.push('multiplePlanes');
+      // Three planes are usually red, green and blue from a colour camera
+      warnings.push(i === 3 && naxis === 3 && num(header.NAXIS3) === 3 ? 'colourPlanes' : 'multiplePlanes');
       break;
     }
   }
+  // A one-shot colour camera: each pixel saw only one colour through the Bayer filter
+  if (typeof header.BAYERPAT === 'string' && header.BAYERPAT.trim()) warnings.push('bayer');
   const bzero = num(header.BZERO) ?? 0;
   const bscale = num(header.BSCALE) ?? 1;
   const blank = num(header.BLANK);
@@ -207,6 +210,12 @@ function readImage(
     case 32:
       for (let i = 0; i < n; i++) {
         const v = view.getInt32(i * 4);
+        data[i] = v === blank ? NaN : v * bscale + bzero;
+      }
+      break;
+    case 64:
+      for (let i = 0; i < n; i++) {
+        const v = Number(view.getBigInt64(i * 8));
         data[i] = v === blank ? NaN : v * bscale + bzero;
       }
       break;

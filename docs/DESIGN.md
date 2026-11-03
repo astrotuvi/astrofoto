@@ -2,7 +2,7 @@
 
 A browser app for reducing monochrome CCD images in FITS format and combining them into colour images. It is built as a learning tool for an after-school astronomy project.
 
-Status: milestones 1–8 (viewer, master frames, calibration and project file, alignment and stacking, colour and export, versions and mentor mode, report, publishing and offline use) implemented. Last updated 2026-11-02.
+Status: milestones 1–9 (viewer, master frames, calibration and project file, alignment and stacking, colour and export, versions and mentor mode, report, publishing and offline use, more instruments) implemented. Last updated 2026-11-03.
 
 ---
 
@@ -37,7 +37,8 @@ At each step the student makes the decision and checks the result. The app expla
 These are left out on purpose, to keep the app small:
 
 - One-shot colour (Bayer) cameras, debayering.
-- Very large datasets (hundreds of frames, or a total beyond about 1.5 GB in memory): no workers, no disk cache, no GPU processing. Larger cameras are handled by software binning on import (§2.4).
+- Very large datasets (hundreds of frames, or a total beyond about 1.5 GB in memory): no workers, no disk cache, no GPU processing. Above that, the app warns about the size; it does not bin frames on import (§2.4).
+- Tile-compressed FITS (`.fz`).
 - Distortion correction in alignment. Shift, rotation and the 180° meridian flip are supported (§3.3).
 - Photometric or astrometric calibration (plate solving). WCS headers are only read for the pixel scale, if present.
 - Server, accounts, sync between devices.
@@ -107,19 +108,21 @@ An **instrument profile** collects everything that differs between telescopes an
 | Setting | Example (reference data) | If missing |
 |---|---|---|
 | Name | "TO AZT-12 + Andor" | — |
-| Header keyword aliases (frame type, filter, exposure, temperature, binning, date) | `IMAGETYP`, `FILTER`, `EXPTIME` | Built-in alias list (below) |
+| Telescope and camera names, shown in the profile box and the report | — | `TELESCOP`, `INSTRUME` (often a driver or program name) |
+| Header keyword aliases (frame type, filter, exposure, temperature, binning, date, focal length, pixel size, pixel scale, gain, saturation) | `IMAGETYP`, `FILTER`, `EXPTIME` | Built-in alias list (below) |
 | Frame type values | `BIAS`, `DARK`, `FLAT`, `LIGHT` | Built-in value list (below) |
 | Trim region | x = 5–516, y = 1–512 | Detected from a flat; "none" is a valid result |
 | Saturation level | 60 000 ADU | `SATURATE` or `DATAMAX` header, else 95 % of the `BITPIX` maximum |
-| Pixel scale | from `FOCALLEN` + `XPIXSZ` | WCS (`CDELT`/`CD`), else entered by hand, else measuring in px only |
-| Pixel size includes binning? | yes | Asked once, with an explanation (N.I.N.A. writes the binned size, some other programs the unbinned size) |
-| Gain (e⁻/ADU) | — | `GAIN`/`EGAIN` header; noise in electrons is only shown when known |
-| Filter → wavelength table | B, V, R, g, r, i | Built-in list for Johnson-Cousins, Sloan, LRGB and narrowband |
+| Pixel scale | from `FOCALLEN` + `XPIXSZ` | `PIXSCALE`/`SECPIX`, else focal length and pixel size, else WCS (`CD`/`CDELT`), else entered by hand, else measuring in px only |
+| Pixel size includes binning? | yes | Yes; asked in the profile editor when the frames are binned, with an explanation (some programs write the binned size, others the unbinned size) |
+| Gain (e⁻/ADU) | — | `EGAIN` header; `GAIN` is not used, as many programs write the camera's gain setting in it |
+| Filter → wavelength table | B, V, R, g, r, i | Built-in list for Johnson-Cousins, Sloan, LRGB and narrowband, also under other spellings (below) |
 | Image orientation | `ROWORDER = TOP-DOWN` | FITS default, bottom-up |
 
-- The app ships with **built-in profiles**, starting with the reference instrument. More are added as new datasets come in.
-- On import, the app **picks the profile** from `TELESCOP`/`INSTRUME`. If none matches, it creates a new profile from the headers and the built-in defaults, and the student checks it on a profile page.
-- The profile is **saved in the project file**, and can be exported and imported as a small JSON file. A mentor can then give students a ready profile for a new telescope.
+- The app ships with **built-in profiles**, starting with the reference instrument. More are added as new datasets come in, as JSON files in `src/instrument/profiles/`.
+- On import, the app **picks the profile** from `TELESCOP`/`INSTRUME`. If none matches, it creates a new profile from the headers and the built-in defaults, marked as unchecked.
+- The **profile box** in step 1 shows each value and where it came from (the profile, a header keyword, or an estimate). "Check and edit" opens an editor for the name, telescope and camera names, trim region, saturation level, pixel scale, binning question, gain and filter wavelengths; empty fields fall back to the header, with the fallback value shown as a placeholder. The keyword aliases, frame type values and the `TELESCOP`/`INSTRUME` match are for the mentor only, as they are easy to break. Saving reads all frame headers again; the student's own frame type and filter corrections are kept.
+- The profile is **saved in the project file**, and can be saved and loaded as a small `.astroprofile.json` file (`{ format: "astrofoto-profile", version, profile }`; values are checked on loading and unknown fields dropped). A mentor can then give students a ready profile for a new telescope.
 - Checking and completing the profile counts as part of the learning: reading a FITS header is a skill in its own right.
 
 #### Header variations
@@ -128,19 +131,28 @@ Different capture programs write headers differently. The built-in defaults hand
 
 | Concept | Keywords tried, in order |
 |---|---|
-| Frame type | `IMAGETYP`, `FRAMETYP`, `OBSTYPE` |
+| Frame type | `IMAGETYP`, `FRAMETYP`, `OBSTYPE`, `FRAME` (INDI) |
 | Filter | `FILTER`, `FILTER1`, `FILTNAM`, `FILTERS` |
 | Exposure | `EXPTIME`, `EXPOSURE`, `ITIME` |
-| Temperature | `CCD-TEMP`, `CCDTEMP`, `TEMPERAT` |
-| Binning | `XBINNING`/`YBINNING`, `CCDXBIN`/`CCDYBIN`, `BINNING` |
-| Date | `DATE-OBS`, `DATE`, `MJD-OBS` |
+| Temperature | `CCD-TEMP`, `CCDTEMP`, `CCD_TEMP`, `TEMPERAT` |
+| Binning | `XBINNING`/`YBINNING`, `CCDXBIN`/`CCDYBIN`, `BINNING`, `CCDSUM` (`'2 2'`, x then y) |
+| Date | `DATE-OBS`, `MJD-OBS`, `DATE` (the file date, last) |
+| Focal length | `FOCALLEN`, `FOCAL` |
+| Pixel size | `XPIXSZ`, `PIXSIZE1`, `PIXSIZE` |
+| Pixel scale | `PIXSCALE`, `SECPIX` |
+| Gain | `EGAIN` |
+| Saturation | `SATURATE`, `DATAMAX` |
 
 | Frame type | Values recognised (case-insensitive) |
 |---|---|
-| Bias | `bias`, `bias frame`, `zero` |
+| Bias | `bias`, `bias frame`, `zero`, `offset` |
 | Dark | `dark`, `dark frame` |
-| Flat | `flat`, `flat field`, `flat frame`, `skyflat`, `domeflat` |
-| Light | `light`, `light frame`, `object`, `science` |
+| Flat | `flat`, `flat field`, `flat frame`, `flatfield`, `skyflat`, `sky flat`, `domeflat`, `dome flat`, `twilight flat` |
+| Light | `light`, `light frame`, `object`, `science`, `expose` (Las Cumbres) |
+
+Filter names are matched exactly first (case-sensitive: `R` ≠ `r`), then under other spellings: `Lum`, `Luminance`, `Clear` → L; `Red filter` → Red; `r'`, `SDSS r`, `rp` → Sloan r; `Bessell V` → V; `H-Alpha`, `Halpha` → Ha; `O III` → OIII. A filter the app does not know works as usual, but without a wavelength until one is entered in the profile.
+
+The tests cover header styles of N.I.N.A., MaxIm DL, KStars/Ekos (INDI), IRAF-style observatory software and Las Cumbres Observatory with synthetic files, as no second dataset is available yet.
 
 If the headers say nothing, the app guesses from the **file name** (e.g. `BIAS-…`, `_flat_`). The student can always correct the type and filter in the file table.
 
@@ -151,21 +163,21 @@ On import and before calibration, the app checks for and explains:
 - darks with a different exposure from the lights (offers scaling, and explains it),
 - darks at a different temperature (warns),
 - lights with no master flat for their filter,
-- a total memory estimate above the limit (offers binning, below).
+- a total memory estimate above the limit (warns, below).
 
 #### Size limits
 
 - At import, the app estimates the memory needed: pixels × 4 bytes × number of frames, plus the masters and stacks.
-- Above about 1.5 GB, it offers **software binning on import** (2×2 or 3×3, averaging pixels).
-  - This is also a teaching point: binning, resolution and noise.
-  - The binning factor is recorded in the profile and in the log, and the pixel scale is adjusted.
-- Typical amateur and student cameras (up to about 16 megapixels, a few dozen frames) work without binning.
+- Above about 1.5 GB, it **warns** that this may be too much for the computer. Software binning on import is a non-goal.
+- Typical amateur and student cameras (up to about 16 megapixels, a few dozen frames) stay below the limit.
 
 #### Compressed files
 
 - `.fits.gz`: read with `fflate`, in milestone 1.
-- Tile-compressed `.fz` (Rice): later milestone, if a dataset needs it.
+- Tile-compressed `.fz`: not supported (a non-goal); the import message says to decompress the file first, e.g. with `funpack`.
 - FITS with extensions: the first HDU with image data is used.
+- `BITPIX` 8, 16, 32, 64, −32 and −64 are read, with `BZERO`, `BSCALE` and `BLANK`.
+- Colour images: a three-plane cube (`NAXIS3 = 3`) and a raw frame from a colour camera (`BAYERPAT`) are read, with a warning that the app is made for monochrome cameras with filters. Only the first plane of a cube is used.
 
 ---
 
@@ -555,16 +567,16 @@ interface FrameMeta {
 interface InstrumentProfile {
   id: string;
   name: string;                  // e.g. "TO AZT-12 + Andor"
+  telescope?: string; camera?: string;  // display names; TELESCOP/INSTRUME if not set
   match?: { telescop?: string; instrume?: string };
-  keywords: Partial<Record<'kind' | 'filter' | 'exposure' | 'temperature'
-                         | 'xbin' | 'ybin' | 'date', string[]>>;
+  keywords: Partial<Record<'kind' | 'filter' | 'exposure' | 'temperature' | 'xbin' | 'ybin' | 'date'
+                         | 'focalLength' | 'pixelSize' | 'pixelScale' | 'gain' | 'saturation', string[]>>;
   kindValues: Partial<Record<Kind, string[]>>;
   trim: { x0: number; x1: number; y0: number; y1: number } | null;  // 0-based, inclusive; null = none
   saturationLevel?: number;      // raw ADU
   pixelScale?: number;           // arcsec/px, after binning; overrides header values
   pixelSizeIncludesBinning?: boolean;
   gain?: number;                 // e-/ADU
-  importBinning: 1 | 2 | 3;      // software binning on import
   filters: Record<string, { wavelengthNm: number; system?: string }>;
 }
 
@@ -655,8 +667,9 @@ src/
   fits.ts              FITS reader and writer (incl. .fits.gz)
   import.ts            dropped/picked files and zips → frames
   instrument/
-    profile.ts         profile matching, header access through aliases, consistency checks
-    defaults.ts        built-in keyword aliases, frame type values, filter wavelengths
+    profile.ts         profile matching, header access through aliases, values with their source
+    profilefile.ts     .astroprofile.json files, checking profiles
+    defaults.ts        built-in keyword aliases, frame type values, filter wavelengths and spellings
     profiles/*.json    built-in profiles, starting with to-azt12-andor.json
   stats.ts             median, mean, standard deviation, percentiles, histogram
   calibrate.ts         trim, combine, master bias/dark/flat, trim detection, apply calibration
@@ -731,7 +744,7 @@ Every milestone includes Estonian and English texts for its own features.
 6. **Versions and comparison**, mentor mode and comments.
 7. **Report**: "Lisa aruandesse" buttons, report page, `.docx` export, copying by section and by image, figures zip. Tested by pasting into Google Docs and Word.
 8. **Publishing and offline use**: GitHub Pages, service worker and install, update prompt, the offline HTML file as a release attachment. (The rule "nothing loaded from other servers" applies from milestone 1.)
-9. **More instruments**: profile editor page, profile import/export, software binning on import, `.fz` support if needed. Tested with a second dataset.
+9. **More instruments**: profile editor, profile files, more header aliases and filter spellings, `BITPIX` 64 and colour-image warnings. Tested with synthetic headers of common capture programs; to be tested with a second dataset when one is available.
 
 ---
 

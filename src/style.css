@@ -224,6 +224,18 @@ input:disabled { opacity: 0.55; }
 .profile-box dt { color: var(--muted); }
 .profile-box dd { margin: 0; overflow-wrap: anywhere; }
 .profile-box .warning { background: var(--warn-soft); padding: 0.4rem 0.6rem; border-radius: var(--radius); }
+.profile-box .source { color: var(--muted); }
+.profile-editor { display: flex; flex-direction: column; gap: 0.7rem; }
+.profile-editor h4 { margin: 0.3rem 0; }
+.profile-editor .hint { margin: 0; }
+.profile-editor fieldset { border: none; margin: 0; padding: 0; }
+.profile-editor legend { padding: 0; margin-bottom: 0.2rem; }
+.profile-editor .trim-fields input { width: 5rem; }
+.profile-editor table input { width: 6rem; }
+.profile-editor details { border-top: 1px solid var(--border); padding-top: 0.5rem; }
+.profile-editor details > label.field, .profile-editor details > h4 { margin-top: 0.6rem; }
+.profile-editor details summary { cursor: pointer; font-weight: 600; }
+.profile-editor input[type='text'] { max-width: 100%; }
 
 /* Tables */
 

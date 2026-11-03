@@ -60,6 +60,21 @@ describe('readFits', () => {
     expect(Array.from(img.data)).toEqual([1, 2, 3, 4]);
   });
 
+  it('reads 8-bit, 32-bit and 64-bit integers', () => {
+    expect(Array.from(readFits(synthFits({ bitpix: 8, width: 2, height: 1, raw: [0, 255] })).data)).toEqual([0, 255]);
+    expect(Array.from(readFits(synthFits({ bitpix: 32, width: 2, height: 1, raw: [-5, 100000] })).data)).toEqual([-5, 100000]);
+    const img = readFits(synthFits({ bitpix: 64, width: 2, height: 1, raw: [-7, 65535], cards: [['BZERO', 10]] }));
+    expect(Array.from(img.data)).toEqual([3, 65545]);
+  });
+
+  it('warns about colour images', () => {
+    const rgb = readFits(synthFits({ bitpix: 16, width: 2, height: 1, planes: 3, raw: [1, 2, 3, 4, 5, 6] }));
+    expect(rgb.warnings).toEqual(['colourPlanes']);
+    expect(Array.from(rgb.data)).toEqual([1, 2]);
+    const bayer = readFits(synthFits({ bitpix: 16, width: 2, height: 1, raw: [1, 2], cards: [['BAYERPAT', 'RGGB']] }));
+    expect(bayer.warnings).toEqual(['bayer']);
+  });
+
   it('reads gzip-compressed files', () => {
     const img = readFits(gzipSync(synthFits({ bitpix: 16, width: 2, height: 1, raw: [7, 8] })));
     expect(Array.from(img.data)).toEqual([7, 8]);

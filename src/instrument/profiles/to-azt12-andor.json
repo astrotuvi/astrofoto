@@ -7,6 +7,5 @@
   "trim": { "x0": 4, "x1": 515, "y0": 0, "y1": 511 },
   "saturationLevel": 60000,
   "pixelSizeIncludesBinning": true,
-  "importBinning": 1,
   "filters": {}
 }

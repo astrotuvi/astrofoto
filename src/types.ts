@@ -18,6 +18,8 @@ export interface FrameMeta {
   /** Where the kind came from; 'guess' means neither header nor file name said it. */
   kindSource: 'header' | 'fileName' | 'guess' | 'user';
   filter: string;                // case-sensitive; '' for bias/dark
+  /** True when the student typed the filter, so a profile change keeps it. */
+  filterEdited?: boolean;
   exposure: number;
   dateObs: string;
   temperature?: number;
@@ -27,19 +29,24 @@ export interface FrameMeta {
   excluded?: boolean;
 }
 
+/** What the app reads from a header; each has a list of keywords to try (see instrument/defaults.ts). */
+export type HeaderConcept = 'kind' | 'filter' | 'exposure' | 'temperature' | 'xbin' | 'ybin' | 'date'
+  | 'focalLength' | 'pixelSize' | 'pixelScale' | 'gain' | 'saturation';
+
 export interface InstrumentProfile {
   id: string;
   name: string;
+  /** Names shown to the student and in the report; the header's TELESCOP/INSTRUME if not set. */
+  telescope?: string;
+  camera?: string;
   match?: { telescop?: string; instrume?: string };
-  keywords: Partial<Record<'kind' | 'filter' | 'exposure' | 'temperature'
-                         | 'xbin' | 'ybin' | 'date', string[]>>;
+  keywords: Partial<Record<HeaderConcept, string[]>>;
   kindValues: Partial<Record<Kind, string[]>>;
   trim: Region | null;           // null = none
   saturationLevel?: number;      // raw ADU
   pixelScale?: number;           // arcsec/px, after binning; overrides header values
   pixelSizeIncludesBinning?: boolean;
   gain?: number;                 // e-/ADU
-  importBinning: 1 | 2 | 3;
   filters: Record<string, { wavelengthNm: number; system?: string }>;
   /** True for a profile made on import that nobody has checked yet. */
   generated?: boolean;

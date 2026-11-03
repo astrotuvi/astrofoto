@@ -4,6 +4,7 @@ import { h } from '../dom';
 import type { HeaderCard } from '../fits';
 import { type Key, t } from '../i18n';
 import { et } from '../i18n/et';
+import { CONCEPTS } from '../instrument/defaults';
 import { keywordsFor } from '../instrument/profile';
 import type { InstrumentProfile } from '../types';
 
@@ -22,7 +23,7 @@ function displayValue(c: HeaderCard): string {
 export function renderHeader(cards: HeaderCard[], profile: InstrumentProfile | null, filter: string, onFilter: (s: string) => void): HTMLElement {
   const used = new Set<string>();
   if (profile) {
-    for (const c of ['kind', 'filter', 'exposure', 'temperature', 'xbin', 'ybin', 'date'] as const) {
+    for (const c of CONCEPTS) {
       for (const k of keywordsFor(profile, c)) used.add(k);
     }
   }

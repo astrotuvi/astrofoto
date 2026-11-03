@@ -3,7 +3,6 @@
 // and is compared with the finished colour image at the end. See docs/DESIGN.md §3.1.
 
 import { autoBlack, background, CHANNELS, type ColorImage, render } from './color';
-import { DEFAULT_FILTERS } from './instrument/defaults';
 import { filterInfo } from './instrument/profile';
 import { trimOffset } from './stack';
 import { type Frame, state } from './state';
@@ -31,7 +30,7 @@ export function quickFilters(filters: string[]): Record<Channel, string> | null 
   const set = PREFERRED.find((p) => p.every((f) => filters.includes(f)));
   if (set) return { B: set[0], G: set[1], R: set[2] };
   if (filters.length < 3) return null;
-  const nm = (f: string) => (state.profile ? filterInfo(state.profile, f) : DEFAULT_FILTERS[f])?.wavelengthNm ?? Infinity;
+  const nm = (f: string) => filterInfo(state.profile, f)?.wavelengthNm ?? Infinity;
   const s = [...filters].sort((a, b) => nm(a) - nm(b) || a.localeCompare(b));
   return { B: s[0], G: s[Math.floor((s.length - 1) / 2)], R: s[s.length - 1] };
 }

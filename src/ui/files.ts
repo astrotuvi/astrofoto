@@ -4,7 +4,7 @@ import { h } from '../dom';
 import { fmt, type Key, t } from '../i18n';
 import { explain, term } from '../i18n/glossary';
 import { type ImportResult, importFiles, type PickedFile, picked } from '../import';
-import { filterInfo, headerValue, pixelScale } from '../instrument/profile';
+import { filterInfo, headerValue } from '../instrument/profile';
 import { QUICK_ID, quickLookFrames } from '../quicklook';
 import { state } from '../state';
 import { runChecks } from '../checks';
@@ -12,6 +12,7 @@ import { tasksFor } from '../tasks';
 import { KINDS, type FrameMeta, type Kind } from '../types';
 import { renderChecks } from './checks';
 import { renderComments } from './comments';
+import { ProfileBox } from './profile';
 import { renderTasks } from './task';
 
 type SortKey = 'fileName' | 'kind' | 'filter' | 'exposure' | 'dateObs';
@@ -24,6 +25,7 @@ export class FilesStep {
   private busy = false;
 
   private rows = new Map<string, HTMLTableRowElement>();
+  private profile = new ProfileBox(() => this.render());
 
   /** `openProject` is called when an .astroproj file is dropped or picked. */
   constructor(private openProject: (file: File) => void) {
@@ -37,7 +39,7 @@ export class FilesStep {
   render(): void {
     // Keep the table's scroll position when it is rebuilt
     const scrollTop = this.element.querySelector('.file-table .scroll')?.scrollTop ?? 0;
-    const parts = [this.loader(), state.frames.length ? renderComments('step:files') : null, this.importMessages(), this.profileBox(), this.summary(), this.checks(), this.quickLook(), this.table(),
+    const parts = [this.loader(), state.frames.length ? renderComments('step:files') : null, this.importMessages(), this.profile.render(), this.summary(), this.checks(), this.quickLook(), this.table(),
       state.frames.length ? renderTasks(tasksFor('files')) : null];
     this.element.replaceChildren(...parts.filter((p): p is HTMLElement => p !== null));
     const scroll = this.element.querySelector('.file-table .scroll');
@@ -142,28 +144,6 @@ export class FilesStep {
     );
   }
 
-  private profileBox(): HTMLElement | null {
-    const p = state.profile;
-    if (!p) return null;
-    const header = state.frames[0]?.meta.header ?? {};
-    const scale = pixelScale(header, p);
-    const trim = p.trim
-      ? t('instr.trimValue', { x0: String(p.trim.x0 + 1), x1: String(p.trim.x1 + 1), y0: String(p.trim.y0 + 1), y1: String(p.trim.y1 + 1) })
-      : t('instr.trimUnknown');
-    const dl = (label: string, value: string) => [h('dt', {}, label), h('dd', {}, value)];
-    return h('div', { class: 'profile-box' },
-      h('h3', {}, t('instr.title'), ': ', p.name),
-      p.generated ? h('p', { class: 'warning' }, t('instr.generated')) : null,
-      h('dl', {},
-        dl(t('instr.telescope'), String(header.TELESCOP ?? '–').trim()),
-        dl(t('instr.camera'), String(header.INSTRUME ?? '–').trim()),
-        dl(t('instr.trim'), trim),
-        dl(t('instr.saturation'), p.saturationLevel ? `${fmt(p.saturationLevel, 0)} ADU` : t('instr.unknown')),
-        dl(t('instr.scale'), scale ? t('instr.scaleValue', { s: fmt(scale, 3) }) : t('instr.unknown')),
-      ),
-    );
-  }
-
   private summary(): HTMLElement | null {
     const frames = state.frames.filter((f) => !f.meta.excluded);
     if (frames.length === 0) return null;
@@ -260,7 +240,7 @@ export class FilesStep {
         disabled: !usesFilter,
         'aria-label': t('files.filter'),
         title: usesFilter ? t('files.filterTip') : t('files.noFilterTip'),
-        onchange: (e: Event) => state.updateMeta(m.id, { filter: (e.target as HTMLInputElement).value.trim() }),
+        onchange: (e: Event) => state.updateMeta(m.id, { filter: (e.target as HTMLInputElement).value.trim(), filterEdited: true }),
       });
       const row = h('tr', {
         class: [selected ? 'selected' : '', m.excluded ? 'excluded' : ''].join(' '),

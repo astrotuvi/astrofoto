@@ -3,7 +3,7 @@
 import { valueCard, type HeaderValue } from '../src/fits';
 
 export interface SynthOptions {
-  bitpix: 8 | 16 | 32 | -32 | -64;
+  bitpix: 8 | 16 | 32 | 64 | -32 | -64;
   width: number;
   height: number;
   /** Stored (raw) values, before BZERO/BSCALE. */
@@ -12,6 +12,8 @@ export interface SynthOptions {
   /** Extra cards written as-is (80 chars max). */
   rawCards?: string[];
   primaryEmpty?: boolean;
+  /** A third axis, e.g. 3 for an RGB colour image. */
+  planes?: number;
 }
 
 function block(text: string): Uint8Array {
@@ -25,7 +27,7 @@ function pad80(s: string): string {
 
 function dataBytes(o: SynthOptions): Uint8Array {
   const bpp = Math.abs(o.bitpix) / 8;
-  const n = o.width * o.height;
+  const n = o.width * o.height * (o.planes ?? 1);
   const buf = new Uint8Array(Math.ceil((n * bpp) / 2880) * 2880);
   const v = new DataView(buf.buffer);
   o.raw.forEach((x, i) => {
@@ -33,6 +35,7 @@ function dataBytes(o: SynthOptions): Uint8Array {
       case 8: v.setUint8(i, x); break;
       case 16: v.setInt16(i * 2, x); break;
       case 32: v.setInt32(i * 4, x); break;
+      case 64: v.setBigInt64(i * 8, BigInt(x)); break;
       case -32: v.setFloat32(i * 4, x); break;
       case -64: v.setFloat64(i * 8, x); break;
     }
@@ -43,9 +46,10 @@ function dataBytes(o: SynthOptions): Uint8Array {
 export function synthFits(o: SynthOptions): Uint8Array<ArrayBuffer> {
   const imageCards = [
     valueCard('BITPIX', o.bitpix),
-    valueCard('NAXIS', 2),
+    valueCard('NAXIS', o.planes ? 3 : 2),
     valueCard('NAXIS1', o.width),
     valueCard('NAXIS2', o.height),
+    ...(o.planes ? [valueCard('NAXIS3', o.planes)] : []),
     ...(o.cards ?? []).map(([k, v]) => valueCard(k, v)),
     ...(o.rawCards ?? []).map(pad80),
     pad80('END'),

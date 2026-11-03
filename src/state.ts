@@ -1,6 +1,7 @@
 // In-memory application state and change events.
 
 import type { FitsImage } from './fits';
+import { redescribe } from './instrument/profile';
 import type { AutoResult } from './align';
 import type {
   CombineMethod, Composition, FrameMeta, InstrumentProfile, Kind, MentorComment, ProcessingSettings, Region, ReportItem, ReportSectionId,
@@ -408,6 +409,21 @@ class State {
     this.emit('profile');
   }
 
+  /** Uses a changed or loaded profile and reads the frame headers again with it. */
+  applyProfile(profile: InstrumentProfile): void {
+    this.profile = profile;
+    let changed = false;
+    for (const f of this.frames) {
+      const meta = redescribe(f.meta, profile);
+      if (READ_FROM_HEADER.some((k) => meta[k] !== f.meta[k])) {
+        f.meta = meta;
+        changed = true;
+      }
+    }
+    this.emit('profile');
+    if (changed) this.emit('frames');
+  }
+
   updateSettings(patch: Partial<ProcessingSettings>): void {
     Object.assign(this.settings, patch);
     this.emit('settings');
@@ -486,6 +502,9 @@ class State {
     for (const fn of this.listeners) fn(kind);
   }
 }
+
+/** The frame metadata a profile can change. */
+const READ_FROM_HEADER = ['kind', 'kindSource', 'filter', 'exposure', 'dateObs', 'temperature', 'xbin', 'ybin'] as const;
 
 /** A master, stack, calibrated or aligned image of a set of products. */
 function productImage(p: Products, id: string): FitsImage | undefined {

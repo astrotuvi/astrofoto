@@ -5,6 +5,7 @@ import { compositionName } from '../color';
 import { taskContent } from '../content';
 import { fmt, getLang, type Key, t } from '../i18n';
 import { term } from '../i18n/glossary';
+import { instrumentNames } from '../instrument/profile';
 import { darkScale } from '../masters';
 import { projectTitle } from '../project';
 import { quickLook } from '../quicklook';
@@ -203,9 +204,8 @@ class Builder {
     const text = (v: unknown) => (v === undefined || v === '' ? undefined : String(v).trim());
     const object = text(header.OBJECT);
     if (object) out.push(field('report.data.object', object));
-    const telescope = text(header.TELESCOP);
+    const { telescope, camera } = instrumentNames(header, state.profile);
     if (telescope) out.push(field('report.data.telescope', telescope));
-    const camera = text(header.INSTRUME);
     if (camera) out.push(field('report.data.camera', camera));
     const dates = state.framesOf('light').map((f) => f.meta.dateObs).filter(Boolean).sort();
     if (dates.length) out.push(field('report.data.date', formatDate(dates[0], true) + ' UTC'));
