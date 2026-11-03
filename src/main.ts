@@ -107,7 +107,7 @@ function renderChrome(): void {
       isMentor() ? h('span', { class: 'badge mentor' }, t('mentor.badge')) : null),
     h('nav', { class: 'steps', 'aria-label': t('step.nav') },
       h('ol', {},
-        state.frames.length ? h('li', { class: current === 'resume' ? 'current' : '' },
+        state.frames.length ? h('li', { class: current === 'resume' ? 'overview current' : 'overview' },
           h('button', {
             type: 'button',
             class: 'step-link',
@@ -120,7 +120,7 @@ function renderChrome(): void {
           }, t('step.overview'))) : null,
         STEPS.map((s, i) => {
           const ok = available(s);
-          return h('li', { class: s.id === current ? 'current' : ok ? '' : 'locked' },
+          return h('li', { class: `numbered ${s.id === current ? 'current' : ok ? '' : 'locked'}` },
             h('button', {
               type: 'button',
               class: 'step-link',

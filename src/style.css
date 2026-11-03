@@ -118,18 +118,35 @@ input:disabled { opacity: 0.55; }
 .logo svg { width: 1.8rem; height: 1.8rem; }
 .tagline { color: var(--muted); }
 
-.steps { flex: 1; }
+/* The steps get a row of their own under the title and the language buttons */
+.lang { margin-left: auto; }
+.steps { order: 1; flex-basis: 100%; border-top: 1px solid var(--border); padding-top: 0.6rem; }
 .steps ol {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.25rem 1rem;
+  align-items: center;
+  gap: 0.4rem;
   list-style: none;
   margin: 0;
   padding: 0;
 }
-.steps li { color: var(--muted); white-space: nowrap; }
-.steps li.current { color: var(--text); font-weight: 600; }
-.steps li.locked { opacity: 0.6; }
+.steps li { display: flex; align-items: center; gap: 0.4rem; white-space: nowrap; }
+/* An arrow between the numbered steps shows their order */
+.steps li + li.numbered::before { content: '›'; color: var(--muted); font-size: 1.1rem; line-height: 1; }
+.steps li.overview { margin-right: 0.6rem; }
+.step-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text);
+  font-weight: 500;
+}
+.step-link:hover:not(:disabled) { border-color: var(--accent); background: var(--accent-soft); }
+.step-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .steps .num {
   display: inline-grid;
   place-items: center;
@@ -138,7 +155,9 @@ input:disabled { opacity: 0.55; }
   border: 1px solid currentColor;
   font-size: 0.8rem;
 }
-.steps li.current .num { background: var(--accent); border-color: var(--accent); color: #fff; }
+.steps li.current .step-link { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.steps li.current .num { background: #fff; border-color: #fff; color: var(--accent); }
+.steps li.locked .step-link { border-style: dashed; background: none; color: var(--muted); cursor: not-allowed; opacity: 0.75; }
 
 .segmented { display: inline-flex; }
 .segmented button { border-radius: 0; margin-left: -1px; }
@@ -346,8 +365,6 @@ table.stats th, table.stats td { padding: 0.2rem 0.8rem 0.2rem 0; border-bottom:
 /* Steps and calibration */
 
 .step-area { min-width: 0; }
-.step-link { border: none; background: none; padding: 0.15rem 0.2rem; color: inherit; font-weight: inherit; }
-.step-link:disabled { opacity: 1; }
 
 .ok { color: #2e7d32; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme='light']) .ok { color: #81c784; } }
