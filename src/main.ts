@@ -1,6 +1,7 @@
 // App start and step navigation.
 
 import './style.css';
+import logoSvg from '../public/favicon.svg?raw';
 import { h } from './dom';
 import { getLang, type Key, type Lang, onLangChange, setLang, t } from './i18n';
 import './masters';
@@ -43,9 +44,14 @@ const color = new ColorStep(viewer);
 const report = new ReportPage();
 const about = new AboutPage();
 const top = h('header', { class: 'topbar' });
+const logo = h('span', { class: 'logo', 'aria-hidden': 'true' });
+logo.innerHTML = logoSvg;
 const updateBar = h('div', { class: 'update-bar', role: 'status', hidden: true });
 const footer = h('footer', { class: 'footer' });
 const stepArea = h('div', { class: 'step-area' });
+const projectHeading = h('h3', {});
+/** The new / open / save buttons, shown above every step. */
+const projectBox = h('div', { class: 'project-box no-print' }, projectHeading, projectBar.element);
 const layout = h('main', { class: 'layout' }, stepArea, viewer.element);
 let current: Step = 'files';
 let resumeWarning: string | undefined;
@@ -67,8 +73,8 @@ function lockedTip(s: (typeof STEPS)[number]): string {
 }
 
 function show(): void {
-  if (current === 'resume') stepArea.replaceChildren(renderResume(open, resumeWarning));
-  else stepArea.replaceChildren({ files, calibration, align, color, report, about }[current].element);
+  const page = current === 'resume' ? renderResume(open, resumeWarning) : { files, calibration, align, color, report, about }[current].element;
+  stepArea.replaceChildren(projectBox, page);
   // The report and About pages use the whole width; the report's figures are drawn from the images, not the viewer
   layout.classList.toggle('report-mode', current === 'report' || current === 'about');
 }
@@ -93,9 +99,10 @@ function open(target: Target): void {
 }
 
 function renderChrome(): void {
+  projectHeading.textContent = t('project.label');
   document.title = (state.info.title ? state.info.title + ' – ' : '') + t('app.title');
   top.replaceChildren(
-    h('div', { class: 'brand' }, h('strong', {}, t('app.title')), h('span', { class: 'tagline' }, t('app.tagline')),
+    h('div', { class: 'brand' }, logo, h('strong', {}, t('app.title')), h('span', { class: 'tagline' }, t('app.tagline')),
       isMentor() ? h('span', { class: 'badge mentor' }, t('mentor.badge')) : null),
     h('nav', { class: 'steps', 'aria-label': t('step.nav') },
       h('ol', {},
@@ -130,7 +137,6 @@ function renderChrome(): void {
         'aria-pressed': String(l === getLang()),
         onclick: () => setLang(l),
       }, l.toUpperCase()))),
-    projectBar.element,
   );
   footer.replaceChildren(
     h('span', {}, t('app.footer', { version: __APP_VERSION__ })),

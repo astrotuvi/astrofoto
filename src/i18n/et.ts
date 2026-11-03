@@ -376,7 +376,7 @@ export const et = {
   'project.error.missingFrame': 'Projekti failist puudub kaader: {detail}',
 
   'resume.title': 'Kus ma pooleli jäin',
-  'resume.project': 'Projekt',
+  'resume.project': 'Andmed',
   'resume.projectTitle': 'Pealkiri',
   'resume.student': 'Õpilane',
   'resume.dates': 'Loodud {created}, viimati salvestatud {saved}.',

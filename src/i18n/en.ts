@@ -378,7 +378,7 @@ export const en: Record<Key, string> = {
   'project.error.missingFrame': 'A frame is missing from the project file: {detail}',
 
   'resume.title': 'Where I left off',
-  'resume.project': 'Project',
+  'resume.project': 'Details',
   'resume.projectTitle': 'Title',
   'resume.student': 'Student',
   'resume.dates': 'Created {created}, last saved {saved}.',
