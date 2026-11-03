@@ -510,7 +510,9 @@ dialog.new-project p, dialog.app-dialog p { margin: 0; }
 .dialog-buttons { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.3rem; }
 ol.progress { margin: 0; padding-left: 1.4rem; display: flex; flex-direction: column; gap: 0.2rem; }
 ol.progress li.done { color: var(--muted); }
-ul.log { margin: 0; padding-left: 1.2rem; }
+ul.log { margin: 0 0 0.4rem; padding-left: 1.2rem; }
+/* The whole log scrolls in its own box, so the page stays short */
+ul.log.all { max-height: 24rem; overflow-y: auto; }
 ul.log .date { color: var(--muted); font-variant-numeric: tabular-nums; }
 .resume ul { margin: 0; padding-left: 1.2rem; }
 

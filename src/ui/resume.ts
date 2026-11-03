@@ -59,6 +59,32 @@ export function logText(code: string, params: Record<string, string | number>): 
   return t(`log.${code}` as Key, p);
 }
 
+/** Entries shown before "Show all". */
+const RECENT_LOG = 6;
+let showAllLog = false;
+
+/** The log, newest first: the last entries, or all of them. */
+function logSection(): HTMLElement {
+  const list = h('ul', { class: 'log' });
+  const button = h('button', { type: 'button', class: 'link' });
+  const fill = () => {
+    const entries = showAllLog ? state.log : state.log.slice(-RECENT_LOG);
+    list.classList.toggle('all', showAllLog);
+    list.replaceChildren(...entries.slice().reverse().map((e) =>
+      h('li', {}, h('span', { class: 'date' }, formatDate(e.date)), ' ', logText(e.code, e.params))));
+    button.textContent = showAllLog ? t('resume.logRecent') : t('resume.logAll', { n: state.log.length });
+  };
+  button.addEventListener('click', () => {
+    showAllLog = !showAllLog;
+    fill();
+  });
+  fill();
+  return h('section', { class: 'phase' },
+    h('h3', {}, t('resume.log')),
+    list,
+    state.log.length > RECENT_LOG ? button : null);
+}
+
 export function renderResume(go: (target: Target) => void, warning?: string): HTMLElement {
   const ctx = new MeasureContext();
   const next = WORK.find((w) => !stepDone(w.id));
@@ -110,9 +136,6 @@ export function renderResume(go: (target: Target) => void, warning?: string): HT
         h('button', { type: 'button', class: 'link', onclick: () => go(targetFor(task.step)) },
           taskContent(task.id, task.params?.(ctx)).title),
         ' – ', t(WORK.find((w) => w.id === task.step)?.label ?? 'step.files')))) : null),
-    state.log.length ? h('section', { class: 'phase' },
-      h('h3', {}, t('resume.log')),
-      h('ul', { class: 'log' }, state.log.slice(-6).reverse().map((e) =>
-        h('li', {}, h('span', { class: 'date' }, formatDate(e.date)), ' ', logText(e.code, e.params))))) : null,
+    state.log.length ? logSection() : null,
   ));
 }
