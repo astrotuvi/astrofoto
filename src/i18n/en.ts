@@ -620,7 +620,10 @@ export const en: Record<Key, string> = {
 
   'mentor.label': 'Mentor mode',
   'mentor.tip': 'Shows the answers, opens all steps and lets you write comments. Remembered in this browser only.',
-  'mentor.confirm': 'Mentor mode shows the answers to the tasks. Switch it on?',
+  'mentor.confirm': 'Mentor mode shows the answers to the tasks. Enter the mentor password to switch it on.',
+  'mentor.password': 'Password',
+  'mentor.wrongPassword': 'Wrong password.',
+  'mentor.switchOn': 'Switch on',
   'mentor.badge': 'Mentor',
   'task.key': 'Answer: {value}',
   'task.keyOr': ' or ',

@@ -398,14 +398,14 @@ The report uses only structures that survive copying into Google Docs and Word w
 
 ### 4.7 Mentor mode
 
-A switch in the footer (with a confirmation), saved in the browser (`localStorage`), not in the project file. A badge in the top bar shows when it is on. It:
+A switch in the footer that asks for the mentor password, saved in the browser (`localStorage`), not in the project file. A badge in the top bar shows when it is on. It:
 - shows the answer key for the tasks: the expected values with their tolerance, the right choice or keyword, and the student's wrong attempts and hints opened;
 - shows all hint levels at once, without counting them as the student's;
 - allows opening any step and part regardless of the order (stacking still needs a confirmed alignment);
 - shows automatic suggestions immediately (the trim suggestion, the automatic alignment check);
 - lets the mentor write **comments** on each step or task. The comments are saved in the project (`mentorComments`, keyed `step:<id>` or `task:<id>`). The student sees them at the top of the step or below the task, and on the "Kus ma pooleli jäin" page, which opens with the project.
 
-The answer key is part of the app code, so a determined student could find it. For this group that is acceptable. Hiding it properly would need a server.
+The password only keeps students from switching it on by chance: the code holds a simple hash of it, and the answer key is part of the app code, so a determined student could find both. The project lead gives the password to the mentors directly. For this group that is acceptable. Hiding it properly would need a server.
 
 ---
 

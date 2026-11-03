@@ -618,7 +618,10 @@ export const et = {
 
   'mentor.label': 'Juhendaja režiim',
   'mentor.tip': 'Näitab vastuseid, avab kõik sammud ja laseb kirjutada kommentaare. Jääb meelde ainult selles brauseris.',
-  'mentor.confirm': 'Juhendaja režiim näitab ülesannete vastuseid. Kas lülitada see sisse?',
+  'mentor.confirm': 'Juhendaja režiim näitab ülesannete vastuseid. Selle sisselülitamiseks sisesta juhendaja parool.',
+  'mentor.password': 'Parool',
+  'mentor.wrongPassword': 'Vale parool.',
+  'mentor.switchOn': 'Lülita sisse',
   'mentor.badge': 'Juhendaja',
   'task.key': 'Vastus: {value}',
   'task.keyOr': ' või ',

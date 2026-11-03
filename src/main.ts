@@ -9,6 +9,7 @@ import { isMentor, setMentor } from './mentor';
 import { onPwaChange, reloadToUpdate, startPwa, updateWaiting } from './pwa';
 import { state } from './state';
 import { AboutPage } from './ui/about';
+import { askMentorPassword } from './ui/mentorlogin';
 import { AlignStep } from './ui/align';
 import { CalibrationStep } from './ui/calibrate';
 import { ColorStep } from './ui/color';
@@ -147,11 +148,13 @@ function renderChrome(): void {
         checked: isMentor(),
         onchange: (e: Event) => {
           const box = e.target as HTMLInputElement;
-          if (box.checked && !confirm(t('mentor.confirm'))) {
+          if (box.checked) {
+            // Switched on only with the password
             box.checked = false;
+            askMentorPassword();
             return;
           }
-          setMentor(box.checked);
+          setMentor(false);
         },
       }), ' ', t('mentor.label')));
 }
