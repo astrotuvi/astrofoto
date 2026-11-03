@@ -55,17 +55,33 @@ export function background(img: FitsImage): Background {
 /** Display level 0–1 of the sky background after "Auto": dark grey, so the faint sky noise stays visible. */
 export const SKY_LEVEL = 0.1;
 
-/**
- * The "Auto" black point: just below the background median, so that the sky is shown at `level`
- * in every channel, whatever its white point and weight.
- */
-export function autoBlack(img: FitsImage, c: ChannelSettings, s: Stretch, level = SKY_LEVEL): number {
+/** The black point that shows the sky at `level` with the channel's white point, weight and stretch; null if none does. */
+function blackForLevel(img: FitsImage, c: ChannelSettings, s: Stretch, level: number): number | null {
   const m = background(img).median;
   // The scaled value x that the stretch shows at `level`, then black from weight·(m − black)/(white − black) = x
   const x = s.type === 'asinh' ? Math.sinh(level * Math.asinh(s.strength)) / s.strength : level;
-  const k = x / (c.weight || 1);
-  if (!(k > 0) || k >= 1 || !(c.white > m)) return m;
+  const k = x / c.weight;
+  if (!(k > 0) || k >= 1 || !(c.white > m)) return null;
   return (m - k * c.white) / (1 - k);
+}
+
+/**
+ * The "Neutral sky" black point: just below the background median, so that the sky is shown at
+ * `level` in every channel, whatever its white point and weight.
+ */
+export function autoBlack(img: FitsImage, c: ChannelSettings, s: Stretch, level = SKY_LEVEL): number {
+  return blackForLevel(img, c, s, level) ?? background(img).median;
+}
+
+/**
+ * The black point for new settings `after` (white point, weight, stretch) that keeps the sky as
+ * bright as it was with `before`. So the white point and weight change only the object, and the
+ * sky stays where the student put it. A sky shown fully black or white keeps its black point.
+ */
+export function keepSky(img: FitsImage, before: ChannelSettings, sBefore: Stretch, after: ChannelSettings, sAfter: Stretch): number {
+  const level = channelLevel(background(img).median, before, sBefore);
+  if (!(level > 0 && level < 1)) return after.black;
+  return blackForLevel(img, after, sAfter, level) ?? after.black;
 }
 
 /**

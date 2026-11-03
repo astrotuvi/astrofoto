@@ -5,6 +5,7 @@ import { fmt, type Key, t } from '../i18n';
 import { explain, term } from '../i18n/glossary';
 import { type ImportResult, importFiles, type PickedFile, picked } from '../import';
 import { filterInfo, headerValue, pixelScale } from '../instrument/profile';
+import { QUICK_ID, quickLookFrames } from '../quicklook';
 import { state } from '../state';
 import { runChecks } from '../checks';
 import { tasksFor } from '../tasks';
@@ -36,7 +37,7 @@ export class FilesStep {
   render(): void {
     // Keep the table's scroll position when it is rebuilt
     const scrollTop = this.element.querySelector('.file-table .scroll')?.scrollTop ?? 0;
-    const parts = [this.loader(), state.frames.length ? renderComments('step:files') : null, this.importMessages(), this.profileBox(), this.summary(), this.checks(), this.table(),
+    const parts = [this.loader(), state.frames.length ? renderComments('step:files') : null, this.importMessages(), this.profileBox(), this.summary(), this.checks(), this.quickLook(), this.table(),
       state.frames.length ? renderTasks(tasksFor('files')) : null];
     this.element.replaceChildren(...parts.filter((p): p is HTMLElement => p !== null));
     const scroll = this.element.querySelector('.file-table .scroll');
@@ -194,6 +195,18 @@ export class FilesStep {
     return h('div', { class: 'checks-box' },
       h('h3', {}, t('files.checks')),
       list.length ? renderChecks(list) : h('p', { class: 'ok' }, t('files.checksOk')));
+  }
+
+  /** A colour image of raw frames, to see what the processing will fix (§3.1). */
+  private quickLook(): HTMLElement | null {
+    if (!state.framesOf('light').length) return null;
+    const ok = !!quickLookFrames();
+    return h('div', { class: 'quick-look' },
+      h('h3', {}, t('quick.heading')),
+      h('p', {}, t('quick.text')),
+      ok ? h('div', { class: 'buttons left' },
+        h('button', { type: 'button', onclick: () => state.select(QUICK_ID) }, t('quick.show')))
+        : h('p', { class: 'hint' }, t('quick.need')));
   }
 
   private sorted(): FrameMeta[] {

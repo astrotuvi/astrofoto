@@ -3,8 +3,8 @@
 // part saves the colour image as PNG and the masters and stacks as FITS (§3.5).
 
 import {
-  autoBlack, background, backgroundLevels, CHANNELS, compositionName, DEFAULT_STRENGTH, initialChannel,
-  newComposition, render as renderColor, wavelengthOrder,
+  autoBlack, background, backgroundLevels, CHANNELS, compositionName, DEFAULT_STRENGTH, initialChannel, keepSky,
+  newComposition, render as renderColor, SKY_LEVEL, wavelengthOrder,
 } from '../color';
 import { h } from '../dom';
 import { exportBase, type FitsExport, fitsBytes, fitsExports, fitsZip, pngBytes } from '../export';
@@ -12,12 +12,13 @@ import { Cancelled, saveFile } from '../fileio';
 import { bottomUp, type FitsImage } from '../fits';
 import { type Key, t } from '../i18n';
 import { filterInfo } from '../instrument/profile';
+import { quickLookFrames } from '../quicklook';
 import { stackImage } from '../stack';
 import { state } from '../state';
 import { finite } from '../stats';
 import { tasksFor } from '../tasks';
 import { asinhScale, createPlotCanvas, drawPlot } from '../tools/plot';
-import type { Channel, ChannelSettings, Composition } from '../types';
+import type { Channel, ChannelSettings, Composition, Stretch } from '../types';
 import { renderComments } from './comments';
 import { renderWhy } from './explain';
 import type { ColorSub } from './resume';
@@ -34,6 +35,8 @@ const ZIP = { description: 'Zip', accept: { 'application/zip': ['.zip'] } };
 
 /** Slider positions run from 0 to this. */
 const STEPS = 1000;
+/** Upper end of the sky brightness slider, in per cent. */
+const SKY_MAX = 50;
 const HIST_HEIGHT = 140;
 const HIST_BINS = 200;
 
@@ -63,7 +66,8 @@ interface Slider {
   fromPos(p: number): number;
   set(v: number): void;
   tip?: string;
-  extra?: HTMLElement;
+  /** The current value, if other settings can change it: the slider then follows it live. */
+  get?: () => number;
 }
 
 export class ColorStep {
@@ -161,6 +165,43 @@ export class ColorStep {
     const channels = { ...c.channels, [ch]: { ...c.channels[ch], ...patch } };
     if (quiet) this.quietly({ channels });
     else state.updateComposition(c.id, { channels });
+  }
+
+  /** Changes the white point or weight of a channel, moving its black point so the sky stays as bright. */
+  private setKeepingSky(ch: Channel, patch: Partial<ChannelSettings>): void {
+    const c = this.current()!;
+    const before = c.channels[ch];
+    const after = { ...before, ...patch };
+    const img = stackImage(after.filter);
+    if (img) after.black = keepSky(img, before, c.stretch, after, c.stretch);
+    this.setChannel(ch, after);
+  }
+
+  /** Changes the stretch, moving the black points so the sky stays as bright in every channel. */
+  private setStretch(stretch: Stretch, quiet: boolean): void {
+    const c = this.current()!;
+    const channels = { ...c.channels };
+    for (const ch of CHANNELS) {
+      const img = stackImage(channels[ch].filter);
+      if (img) channels[ch] = { ...channels[ch], black: keepSky(img, channels[ch], c.stretch, channels[ch], stretch) };
+    }
+    if (quiet) this.quietly({ stretch, channels });
+    else state.updateComposition(c.id, { stretch, channels });
+  }
+
+  /** Sets every channel's black point so the sky is equally bright (`level`, 0–1) in all of them. */
+  private neutralSky(level: number, quiet: boolean): void {
+    const c = this.current()!;
+    const channels = { ...c.channels };
+    for (const ch of CHANNELS) {
+      const img = stackImage(channels[ch].filter);
+      if (img) channels[ch] = { ...channels[ch], black: autoBlack(img, channels[ch], c.stretch, level) };
+    }
+    if (quiet) this.quietly({ skyLevel: level, channels });
+    else {
+      state.updateComposition(c.id, { skyLevel: level, channels });
+      this.show(c);
+    }
   }
 
   // ------------------------------------------------------------- 1. colour image
@@ -272,12 +313,24 @@ export class ColorStep {
         type: 'radio',
         name: 'stretch',
         checked: c.stretch.type === type,
-        onchange: () => state.updateComposition(c.id, { stretch: { ...c.stretch, type } }),
+        onchange: () => this.setStretch({ ...c.stretch, type }, false),
       }), ' ', h('strong', {}, t(label)), ' – ', t(tip));
 
     return h('section', { class: 'phase' },
       h('h3', {}, t('phase.do')),
       h('p', {}, t('color.adjust')),
+      h('fieldset', { class: 'methods' },
+        h('legend', {}, t('color.neutral')),
+        this.slider({
+          label: t('color.skyLevel'),
+          tip: t('color.neutralTip'),
+          value: Math.round(100 * (c.skyLevel ?? SKY_LEVEL)),
+          toPos: (v) => (v / SKY_MAX) * STEPS,
+          fromPos: (p) => Math.round((p / STEPS) * SKY_MAX),
+          set: (v) => this.neutralSky(Math.min(SKY_MAX, Math.max(0, v)) / 100, true),
+        }),
+        h('div', { class: 'buttons left' },
+          h('button', { type: 'button', onclick: () => this.neutralSky(this.current()!.skyLevel ?? SKY_LEVEL, false) }, t('color.neutralApply')))),
       CHANNELS.map((ch) => this.channelControls(c, ch)),
       h('fieldset', { class: 'methods' },
         h('legend', {}, t('color.stretch')),
@@ -289,7 +342,7 @@ export class ColorStep {
           value: c.stretch.strength,
           toPos: (v) => (Math.log10(Math.max(1, v)) / 3) * STEPS,
           fromPos: (p) => Number((10 ** ((3 * p) / STEPS)).toPrecision(2)),
-          set: (v) => this.quietly({ stretch: { type: 'asinh', strength: Math.max(0.1, v || DEFAULT_STRENGTH) } }),
+          set: (v) => this.setStretch({ type: 'asinh', strength: Math.max(0.1, v || DEFAULT_STRENGTH) }, true),
         }) : null),
       h('div', { class: 'buttons left' }, h('button', { type: 'button', onclick: () => this.show(c) }, t('color.showImage'))));
   }
@@ -320,14 +373,7 @@ export class ColorStep {
         toPos: (v) => ((v - lo) / (hi - lo)) * STEPS,
         fromPos: (p) => lo + (p / STEPS) * (hi - lo),
         set: (v) => this.setChannel(ch, { black: Math.min(v, cur().white - noise / 10) }),
-        extra: h('button', {
-          type: 'button',
-          title: t('color.autoTip'),
-          onclick: () => {
-            this.setChannel(ch, { black: autoBlack(img, cur(), this.current()!.stretch) }, false);
-            this.show(c);
-          },
-        }, t('color.auto')),
+        get: () => cur().black,
       }),
       this.slider({
         label: t('color.white'),
@@ -335,7 +381,7 @@ export class ColorStep {
         value: s.white,
         toPos: (v) => (v - b.median <= near ? 0 : (Math.log((v - b.median) / near) / span) * STEPS),
         fromPos: (p) => b.median + near * Math.exp((p / STEPS) * span),
-        set: (v) => this.setChannel(ch, { white: Math.max(v, cur().black + noise / 10) }),
+        set: (v) => this.setKeepingSky(ch, { white: Math.max(v, cur().black + noise / 10) }),
       }),
       this.slider({
         label: t('color.weight'),
@@ -343,7 +389,7 @@ export class ColorStep {
         value: s.weight,
         toPos: (v) => (v / 3) * STEPS,
         fromPos: (p) => Number(((3 * p) / STEPS).toFixed(2)),
-        set: (v) => this.setChannel(ch, { weight: Math.max(0, v) }),
+        set: (v) => this.setKeepingSky(ch, { weight: Math.max(0, v) }),
       }),
       hist);
   }
@@ -364,7 +410,15 @@ export class ColorStep {
       range.value = clampPos(v);
       o.set(v);
     });
-    return h('div', { class: 'slider-row', title: o.tip }, h('span', { class: 'slider-label' }, o.label), range, num, o.extra);
+    const get = o.get;
+    if (get) {
+      this.live.push(() => {
+        const v = get();
+        if (document.activeElement !== range) range.value = clampPos(v);
+        if (document.activeElement !== num) num.value = inputValue(v);
+      });
+    }
+    return h('div', { class: 'slider-row', title: o.tip }, h('span', { class: 'slider-label' }, o.label), range, num);
   }
 
   /**
@@ -437,10 +491,13 @@ export class ColorStep {
     };
     update();
     this.live.push(update);
+    const c = this.current();
     return h('section', { class: 'phase' },
       h('h3', {}, t('phase.check')),
       out,
-      h('p', { class: 'hint' }, t('color.check')));
+      h('p', { class: 'hint' }, t('color.check')),
+      c && quickLookFrames() ? h('div', { class: 'buttons left' },
+        h('button', { type: 'button', title: t('color.compareQuickTip'), onclick: () => this.viewer.show(`color:${c.id}`, { tab: 'compare' }) }, t('color.compareQuick'))) : null);
   }
 
   // ------------------------------------------------------------- 2. export

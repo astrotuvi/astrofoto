@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
-  autoBlack, backgroundLevels, channelLevel, compositionName, initialChannel, newComposition, render, stretchValue,
+  autoBlack, backgroundLevels, channelLevel, compositionName, initialChannel, keepSky, newComposition, render, stretchValue,
   wavelengthOrder,
 } from '../src/color';
 import { fitsBytes, fitsExports } from '../src/export';
@@ -11,7 +11,7 @@ import { refreshAll } from '../src/masters';
 import { open, serialize } from '../src/project';
 import { stackImage } from '../src/stack';
 import { state } from '../src/state';
-import type { Composition } from '../src/types';
+import type { Composition, Stretch } from '../src/types';
 import { synthFits } from './helpers';
 
 const plane = (values: number[]): FitsImage => ({
@@ -66,6 +66,26 @@ describe('colour', () => {
     c.stretch = { type: 'linear', strength: 1000 };
     c.channels.R.black = autoBlack(images.R, c.channels.R, c.stretch);
     expect(Math.abs(backgroundLevels(c, (f) => images[f]).R! - 25.5)).toBeLessThanOrEqual(0.5);
+  });
+
+  it('keeps the sky as bright when the white point, weight or stretch change', () => {
+    const img = plane([...Array.from({ length: 99 }, (_, i) => 1000 + (i % 5) - 2), 30000]);
+    const asinh = { type: 'asinh' as const, strength: 100 };
+    const before = { filter: 'R', black: 900, white: 20000, weight: 1 };
+    const sky = (c: typeof before, s: Stretch) => channelLevel(1000, c, s);
+    const level = sky(before, asinh);
+    for (const [after, s] of [
+      [{ ...before, white: 5000 }, asinh],
+      [{ ...before, weight: 2 }, asinh],
+      [before, { type: 'asinh' as const, strength: 1000 }],
+      [before, { type: 'linear' as const, strength: 100 }],
+    ] as const) {
+      const black = keepSky(img, before, asinh, after, s);
+      expect(sky({ ...after, black }, s)).toBeCloseTo(level, 6);
+    }
+    // A sky clipped to black keeps its black point
+    const clipped = { ...before, black: 1100 };
+    expect(keepSky(img, clipped, asinh, { ...clipped, white: 5000 }, asinh)).toBe(1100);
   });
 
   it('checks that the filters go from short to long wavelength', () => {

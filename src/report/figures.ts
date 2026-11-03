@@ -2,10 +2,11 @@
 // 1600 px, a white background, the labels in the report language, a grey scale legend and a
 // scale bar in arcseconds (in pixels when the pixel scale is not known). Runs in the browser.
 
-import { render as renderColor } from '../color';
+import { type ColorImage, render as renderColor } from '../color';
 import { bottomUp, type FitsImage } from '../fits';
 import { fmt, getLang, t } from '../i18n';
 import { pixelScale } from '../instrument/profile';
+import { quickLookOf, renderQuickLook } from '../quicklook';
 import { stackImage } from '../stack';
 import { state } from '../state';
 import { displayRange, finite, greyLevel } from '../stats';
@@ -230,10 +231,18 @@ function imageFigure(s: Extract<FigureSnapshot, { type: 'image' }>): HTMLCanvasE
 }
 
 function colorFigure(s: Extract<FigureSnapshot, { type: 'color' }>): HTMLCanvasElement | null {
-  const color = renderColor(s.composition, stackImage);
   const first = (['R', 'G', 'B'] as const).map((k) => stackImage(s.composition.channels[k].filter)).find(Boolean);
+  return colorBitmap(renderColor(s.composition, stackImage), first, s.view);
+}
+
+function quickLookFigure(s: Extract<FigureSnapshot, { type: 'quickLook' }>): HTMLCanvasElement | null {
+  const q = quickLookOf(s.frames);
+  return q && colorBitmap(renderQuickLook(q), q.frames.G.image, s.view);
+}
+
+function colorBitmap(color: ColorImage | null, first: FitsImage | undefined, v: Region | null): HTMLCanvasElement | null {
   if (!color || !first) return null;
-  const view = validView(s.view, color);
+  const view = validView(v, color);
   const rgba = color.rgba;
   const bitmap = cropBitmap(color.width, color.height, bottomUp(first), view, (i, out, o) => {
     out[o] = rgba[i * 4];
@@ -285,6 +294,7 @@ function draw(s: FigureSnapshot): HTMLCanvasElement | null {
   switch (s.type) {
     case 'image': return imageFigure(s);
     case 'color': return colorFigure(s);
+    case 'quickLook': return quickLookFigure(s);
     case 'profile': return profileFigure(s);
     case 'histogram': return histogramFigure(s);
   }

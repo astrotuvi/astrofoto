@@ -7,6 +7,7 @@ import { fmt, getLang, type Key, t } from '../i18n';
 import { term } from '../i18n/glossary';
 import { darkScale } from '../masters';
 import { projectTitle } from '../project';
+import { quickLook } from '../quicklook';
 import { referenceFrame } from '../stack';
 import { masterId, state } from '../state';
 import { stats, values } from '../stats';
@@ -75,6 +76,11 @@ function colorCaption(c: Composition): string {
   });
 }
 
+function quickCaption(frames: Record<'R' | 'G' | 'B', string>): string {
+  const name = (id: string) => state.frame(id)?.meta.fileName ?? id;
+  return t('report.cap.quick', { B: name(frames.B), G: name(frames.G), R: name(frames.R) });
+}
+
 /** The caption shown when the student has not written one, in the current language. */
 export function defaultCaption(s: ReportSnapshot): string {
   switch (s.type) {
@@ -91,6 +97,8 @@ export function defaultCaption(s: ReportSnapshot): string {
     }
     case 'color':
       return colorCaption(s.composition) + (s.view ? ' ' + t('report.cap.view', { region: regionText(s.view) }) : '');
+    case 'quickLook':
+      return quickCaption(s.frames) + (s.view ? ' ' + t('report.cap.view', { region: regionText(s.view) }) : '');
     case 'profile':
       return t('report.cap.profile', {
         line: lower(t(s.axis === 'row' ? 'profile.titleRow' : 'profile.titleColumn', { n: String(s.index + 1) })),
@@ -116,6 +124,8 @@ export function itemTitle(s: ReportSnapshot): string {
       return imageLabel(s.imageId);
     case 'color':
       return t('color.title', { name: s.composition.name || compositionName(s.composition) });
+    case 'quickLook':
+      return t('quick.title');
     case 'profile':
       return `${t('tab.profile')} ${imageLabel(s.imageId)}`;
     case 'histogram':
@@ -336,8 +346,12 @@ class Builder {
       return f !== null && state.stacks.has(`stack:${f}`);
     }));
     if (!ready.length) return [];
+    // The quick look of the raw frames first, as the "before" image
+    const q = quickLook();
+    const frames = q && { R: q.frames.R.meta.id, G: q.frames.G.meta.id, B: q.frames.B.meta.id };
     return [
       { type: 'heading', level: 2, text: t('report.section.colour') },
+      ...(frames ? [this.addFigure({ type: 'quickLook', frames, view: null }, quickCaption(frames), t('quick.title'))] : []),
       ...ready.map((c) => this.addFigure({ type: 'color', composition: structuredClone(c), view: null }, colorCaption(c), c.name || compositionName(c))),
     ];
   }

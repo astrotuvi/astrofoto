@@ -5,6 +5,7 @@ import { h } from '../dom';
 import { bottomUp } from '../fits';
 import { fmt, type Key, t } from '../i18n';
 import { term } from '../i18n/glossary';
+import { QUICK_ID, quickLook, quickLookFrames, renderQuickLook } from '../quicklook';
 import { DISPLAY_SCALES, displayRange, finite } from '../stats';
 import { stackImage } from '../stack';
 import { state } from '../state';
@@ -51,6 +52,7 @@ export function masterTitle(id: string): string {
 
 /** E.g. "värvipilt BVR". */
 export function colorTitle(id: string): string {
+  if (id === QUICK_ID) return t('quick.title');
   const c = state.composition(id);
   return c ? t('color.title', { name: c.name || compositionName(c) }) : id;
 }
@@ -137,12 +139,18 @@ export class ViewerPanel {
   }
 
   private isColor(): boolean {
-    return !!state.composition(state.selectedId);
+    return !!state.composition(state.selectedId) || state.selectedId === QUICK_ID;
   }
 
-  /** The tab shown: colour images only have the pixel readout. */
+  /** Tabs of the image shown: a colour image has the pixel readout and the comparison with the quick look. */
+  private tabs(): typeof TABS {
+    if (state.selectedId === QUICK_ID) return TABS.filter((x) => x.id === 'pixel');
+    if (this.isColor()) return TABS.filter((x) => x.id === 'pixel' || x.id === 'compare');
+    return TABS;
+  }
+
   private shownTab(): Tab {
-    return this.isColor() ? 'pixel' : this.tab;
+    return this.tabs().some((x) => x.id === this.tab) ? this.tab : 'pixel';
   }
 
   private tool(): Tool {
@@ -158,7 +166,7 @@ export class ViewerPanel {
       this.viewer.element,
       this.readout,
       h('div', { class: 'tabs', role: 'tablist' },
-        (this.isColor() ? TABS.filter((x) => x.id === 'pixel') : TABS).map((tab) => h('button', {
+        this.tabs().map((tab) => h('button', {
           type: 'button',
           role: 'tab',
           class: tab.id === this.shownTab() ? 'active' : '',
@@ -198,6 +206,10 @@ export class ViewerPanel {
     const view = this.viewer.visibleRegion();
     const c = state.composition(id);
     if (c) return { type: 'color', composition: structuredClone(c), view };
+    if (id === QUICK_ID) {
+      const q = quickLook();
+      return q && { type: 'quickLook', frames: { R: q.frames.R.meta.id, G: q.frames.G.meta.id, B: q.frames.B.meta.id }, view };
+    }
     const p = this.viewer.getProfile();
     const box = this.viewer.getBox();
     return {
@@ -213,10 +225,11 @@ export class ViewerPanel {
   private imageSelect(): HTMLElement {
     if (state.frames.length === 0) return h('h2', {}, t('viewer.title'));
     const groups: HTMLElement[] = [];
-    const colors = state.compositions.filter((c) => CHANNELS.some((ch) => stackImage(c.channels[ch].filter)));
+    const colors = state.compositions.filter((c) => CHANNELS.some((ch) => stackImage(c.channels[ch].filter))).map((c) => `color:${c.id}`);
+    if (quickLookFrames()) colors.push(QUICK_ID);
     if (colors.length) {
       groups.push(h('optgroup', { label: t('viewer.colors') },
-        colors.map((c) => h('option', { value: `color:${c.id}`, selected: `color:${c.id}` === state.selectedId }, colorTitle(`color:${c.id}`)))));
+        colors.map((id) => h('option', { value: id, selected: id === state.selectedId }, colorTitle(id)))));
     }
     if (state.masters.size) {
       groups.push(h('optgroup', { label: t('viewer.masters') },
@@ -366,6 +379,17 @@ export class ViewerPanel {
       this.viewer.setImage(img && first ? { width: img.width, height: img.height, data: first.data, rgba: img.rgba, flipY: bottomUp(first) } : null);
       this.updateOverlay();
       this.render();
+      this.compare.apply();
+      return;
+    }
+    if (state.selectedId === QUICK_ID) {
+      const q = quickLook();
+      const img = q && renderQuickLook(q);
+      const first = q?.frames.G.image;
+      this.shownData = null;
+      this.viewer.setImage(img && first ? { width: img.width, height: img.height, data: first.data, rgba: img.rgba, flipY: bottomUp(first) } : null);
+      this.updateOverlay();
+      this.render();
       return;
     }
     const v = state.viewable(state.selectedId);
@@ -396,7 +420,15 @@ export class ViewerPanel {
         return img ? [`${ch} (${f}) ${fmt(img.data[p.y * img.width + p.x], 1)}`] : [];
       });
       this.readout.textContent = t('viewer.readoutColor', { x: String(p.x + 1), y: String(p.y + 1), v: parts.join(' · ') });
-    } else if (c) {
+    } else if (state.selectedId === QUICK_ID && p) {
+      // The raw values behind each channel
+      const q = quickLook();
+      const parts = q ? CHANNELS.map((ch) => {
+        const img = q.frames[ch].image;
+        return `${ch} (${q.frames[ch].meta.filter}) ${fmt(img.data[p.y * img.width + p.x], 1)}`;
+      }) : [];
+      this.readout.textContent = t('viewer.readoutColor', { x: String(p.x + 1), y: String(p.y + 1), v: parts.join(' · ') });
+    } else if (c || state.selectedId === QUICK_ID) {
       this.readout.textContent = t('viewer.hover');
     } else if (!state.viewable(state.selectedId)) {
       this.readout.textContent = t('viewer.empty');
@@ -415,9 +447,16 @@ export class ViewerPanel {
 
   private renderTool(): void {
     if (this.isColor()) {
+      if (this.shownTab() === 'compare') {
+        this.toolArea.replaceChildren(this.compare.render());
+        return;
+      }
+      const q = state.selectedId === QUICK_ID ? quickLook() : null;
       this.toolArea.replaceChildren(h('div', { class: 'tool-out' },
+        q ? h('p', {}, t('quick.frames', { R: q.frames.R.meta.fileName, G: q.frames.G.meta.fileName, B: q.frames.B.meta.fileName })) : null,
+        q ? h('p', { class: 'hint' }, t('quick.look')) : null,
         h('p', { class: 'hint' }, t('pixel.hint')),
-        h('p', { class: 'hint' }, t('pixel.color'))));
+        h('p', { class: 'hint' }, t(q ? 'quick.pixel' : 'pixel.color'))));
       return;
     }
     const v = state.viewable(state.selectedId);

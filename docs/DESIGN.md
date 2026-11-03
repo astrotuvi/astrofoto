@@ -84,7 +84,7 @@ In this document, pixel coordinates are **1-based**, the convention used by FITS
 | `R` (Johnson) and `r` (Sloan) are different filters. | Filter names are **case-sensitive** and never changed. Bias and dark frames ignore `FILTER`. |
 | The same bright stars appear in all 18 lights. The drift is up to about 4.2 px (V frames), with no rotation (< 0.03°). It wanders rather than growing steadily: the last frame is 2.3 px from the first. Only 4–6 stars stand out in g and B; the bright knots of M57 look like stars to a simple peak finder. | Alignment corrects **shift only**, measured to a fraction of a pixel (scatter 0.05–0.2 px). Star finding rejects peaks that do not stand out at least 5× the scatter of the ring around them. |
 | There are 3 lights per filter. | **Median** stacking is the default: it removes cosmic rays. Sigma clipping is pointless with 3 frames. |
-| The sky background differs by filter, roughly 560–1300 ADU above bias in the stacks (B lowest), with a noise of 20–31 ADU. The brightest stacked pixel ranges from about 14 000 ADU (B) to 59 000 ADU (r). | An automatic black point for each channel, just below the background median, which makes the sky the same dark grey in every channel. The white points differ by channel, so the colour balance is set per channel. |
+| The sky background differs by filter, roughly 560–1300 ADU above bias in the stacks (B lowest), with a noise of 20–31 ADU. The brightest stacked pixel ranges from about 14 000 ADU (B) to 59 000 ADU (r). | An automatic black point for each channel ("Neutral sky"), just below the background median, which makes the sky the same dark grey in every channel. The white points differ by channel, so the colour balance is set per channel. |
 | The brightest star peaks at about 62 000 ADU raw in r and i. | A saturation overlay, with an adjustable level (default 60 000 ADU raw). |
 | Plate scale 206 265 × 0.026 / 12 000 ≈ 0.45″/px, so the field is about 3.8′. | Measuring tools can show arcseconds, computed from header values. |
 
@@ -186,6 +186,11 @@ Steps unlock in order. A finished step can be reopened at any time. Changing it 
 - Each file is sorted by its headers through the profile's keyword aliases: frame type, filter, exposure, date. If these are missing, the file name is used.
 - A table shows the files grouped by type and filter. The student can correct the type and filter, and exclude individual frames.
 - Clicking a file opens the image and its **header viewer**. The important keywords have tooltips.
+- **Quick look** (kiirpilk): as soon as there are light frames in at least three filters, the student can see a colour image of **one raw light frame per filter**, with no calibration, alignment or stacking. It shows early what the work is for: the text names what to look for (hot pixels → dark, dust rings and dark corners → flat, coloured star edges → alignment, grainy sky → stacking).
+  - Filters as in §2.3: B, V, R or g, r, i when all three exist, else the shortest, middle and longest wavelength. Of each filter, the frames taken closest together in time are used.
+  - Fully automatic settings, with no sliders: asinh stretch (strength 100), white point at the 99.9th percentile of each frame, black point for a neutral 10 % grey sky.
+  - It is shown in the viewer as a colour image (pixel readout of the raw values). It is not saved in the project file; it is recomputed from the frames.
+  - At the end, a finished colour image can be compared with it in the **"Võrdle"** tab (blinking or a split line); the quick look is then cropped to the area of the stacks. The report's colour section starts with it as the "before" image, and it can be added to the report like any image.
 
 ### 3.2 Calibration
 
@@ -226,13 +231,14 @@ In the app the step has three parts: **Käsitsi** (by hand: reference, model, cl
 ### 3.4 Colour
 
 - One or more **compositions**, each mapping stacked filter images to the R, G and B channels. The student chooses the filters; the table of stacks shows each filter's wavelength, and a check says whether the mapping goes from short (blue) to long (red) wavelength, is reversed, mixed ("false colour") or unknown. The same filter may go into two channels.
-- Settings for each channel: black point (the "Auto" button sets it just below the background median, so the sky is shown at 10 % grey for the current white point, weight and stretch; the slider reaches 50 σ below the background for a lighter sky), white point, weight (colour balance). A newly chosen filter starts at the full range of its stack (minimum to maximum), so the linear image looks nearly black, as in §4.2.
+- Settings for each channel: black point (the sky brightness; the slider reaches 50 σ below the background for a lighter sky), white point, weight (colour balance). **"Neutral sky"** sets every black point just below the background median, so the sky is shown equally bright in all channels. Its slider chooses that brightness (0–50 %, default 10 %) and applies it live; its button applies it again, e.g. after the black points were moved by hand. The chosen brightness is saved with the composition.
+- **The sky stays put.** Changing a white point, a weight or the stretch also moves that channel's black point, so the sky keeps its display level: these settings change only the object, and only the black point changes the sky. A sky that is shown fully black (black point above the background) keeps its black point. A newly chosen filter starts at the full range of its stack (minimum to maximum), so the linear image looks nearly black, as in §4.2.
 - Channel brightness = stretch(weight × (value − black) / (white − black)), clipped to 0–1.
 - Stretch: linear or asinh, `asinh(t·x) / asinh(t)` with strength t (1–1000, default 100), applied to each channel separately.
 - The image updates live as settings change: sliders change the image and the histograms without rebuilding the panel. The white point slider is logarithmic above the background, so faint and bright settings both fit.
 - The histogram of each channel is shown with the black and white points. It runs from the faintest to the brightest pixel (or to the black or white point, if they are outside), so both points are always visible. The ADU axis is asinh((x − background) / 3σ): linear near the background, so the sky peak keeps its shape, and logarithmic further out on both sides.
-- **Check:** the background brightness of each channel on the 0–255 scale. It should be equal (neutral sky); otherwise the app names the tint and points to "Auto" and the weights.
-- The colour image is shown in the viewer, where the pixel readout gives the stack value behind each channel. It has no display range or measuring tabs of its own.
+- **Check:** the background brightness of each channel on the 0–255 scale. It should be equal (neutral sky); otherwise the app names the tint and points to "Neutral sky" and the black points.
+- The colour image is shown in the viewer, where the pixel readout gives the stack value behind each channel. It has no display range or measuring tabs of its own; its "Võrdle" tab compares it with the quick look (§3.1, the default; the Check part has a button for that) or with another colour image of the project. Versions are not offered there, since a colour image's settings are not part of a version.
 - In the app the step has two parts: **Värvipilt** (colour image) and **Failide salvestamine** (saving files, §3.5).
 
 For the reference data, BVR shows the ring of M57 red outside and blue-green inside; in gri the ring is green, because Hα falls into r, which is in the green channel. Task 14 builds on this difference.
@@ -346,7 +352,7 @@ The report is one of the app's most important outputs. It is rarely the final do
   - data description: object, telescope, camera, filters, number of frames and exposures, from the headers;
   - processing steps, with formulas and parameters, written as readable sentences from the log, not as a raw log;
   - the tasks with the student's answers and measured values;
-  - the final colour images.
+  - the final colour images, after the quick look of the raw frames (§3.1) as the "before" image.
 - Mentor comments are **left out by default**, because they are feedback, not part of the student's work. They can be included for the mentor's own copy.
 - The report is written in the current language. Switching language and exporting again gives the other language.
 
@@ -584,6 +590,7 @@ interface Composition {
     filter: string | null; black: number; white: number; weight: number;
   }>;
   stretch: { type: 'linear' | 'asinh'; strength: number };
+  skyLevel?: number;             // "Neutral sky" brightness 0–1, default 0.1
 }
 
 interface Project {
@@ -625,6 +632,7 @@ interface ReportItem {
   snapshot:                      // what to redraw; image ids as in the viewer, e.g. 'master:flat:g'
     | { type: 'image'; imageId: string; range: { mode; black; white }; view: Region | null; box?; line? }
     | { type: 'color'; composition: Composition; view: Region | null }   // a copy of its settings
+    | { type: 'quickLook'; frames: Record<'R' | 'G' | 'B', string>; view: Region | null }  // frame ids
     | { type: 'profile'; imageId: string; axis: 'row' | 'column'; index: number }
     | { type: 'histogram'; imageId: string; box: Region | null; log: boolean; range: 'full' | 'clipped'; black; white }
     | { type: 'boxStats'; imageId: string; box: Region }                  // becomes a table
@@ -660,6 +668,7 @@ src/
                        common crop and stacks per filter, built from the state
   color.ts             channel mapping, black/white point, stretch → RGBA, background check,
                        wavelength order
+  quicklook.ts         quick look: one raw frame per filter, automatic settings, crop to the stacks
   export.ts            FITS files of masters and stacks (names, zip), PNG of a colour image
   viewer.ts            canvas display, zoom/pan, overlays, click handling
   versions.ts          named versions: save, compute their images, differences
@@ -692,7 +701,7 @@ src/
   ui/
     files.ts  profile.ts  calibrate.ts  align.ts  color.ts  resume.ts  glossary.ts  settings.ts
     viewerpanel.ts     viewer with toolbar, readout and tool tabs
-    compare.ts         "Võrdle" tab: blink/split, versions list
+    compare.ts         "Võrdle" tab: blink/split, versions list, colour image vs quick look or another
     report.ts          report page: sections, items, captions, downloads, print
     about.ts           About page: version, offline status, install, updates, offline file
     comments.ts        mentor comments on steps and tasks

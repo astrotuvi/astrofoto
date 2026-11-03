@@ -1,10 +1,14 @@
 // The "Võrdle" tab of the viewer: blink or split between the image shown (A) and another image
 // (B), from the current settings or a saved version, and the list of versions (§4.3, §4.4).
+// A colour image is compared with the quick look of the raw frames (§3.1) or another colour image.
 
 import { h } from '../dom';
+import { CHANNELS, compositionName, render as renderColor } from '../color';
 import { bottomUp } from '../fits';
 import { fmt, getLang, type Key, t } from '../i18n';
 import { term, type TermId } from '../i18n/glossary';
+import { QUICK_ID, quickLook, quickLookFrames, renderQuickLook, stackRegion } from '../quicklook';
+import { stackImage } from '../stack';
 import { type Products, state } from '../state';
 import type { Viewer, ViewImage } from '../viewer';
 import { computeVersion, type Difference, differences, isFresh, saveVersion } from '../versions';
@@ -21,6 +25,9 @@ export function imageTitle(id: string): string {
   const base = baseId(id);
   const [kind, ...rest] = base.split(':');
   const name = (fid: string) => state.frame(fid)?.meta.fileName ?? fid;
+  if (base === QUICK_ID) return t('quick.title');
+  const c = state.composition(base);
+  if (c) return t('color.title', { name: c.name || compositionName(c) });
   if (kind === 'master') return t('master.title', { kind: term(rest[0] as TermId), filter: rest[1] ? ' ' + rest.slice(1).join(':') : '' });
   if (kind === 'stack') return t('stack.title', { filter: rest.join(':') || '–' });
   if (kind === 'cal') return `${t('viewer.calibrated')}: ${name(rest[0])}`;
@@ -71,6 +78,9 @@ export class CompareTool {
   private name = '';
   /** Image B as last given to the viewer; reused so blinking does not redraw it each time. */
   private shown: ViewImage | null = null;
+  /** Image B of a colour image: the quick look or 'color:<composition id>'. */
+  private colorId = QUICK_ID;
+  private colorShown: { key: string; image: ViewImage | null } | null = null;
 
   constructor(private viewer: Viewer) {
     state.on((kind) => {
@@ -104,9 +114,53 @@ export class CompareTool {
     return id ? (state.versions.find((v) => v.id === id)?.name ?? id) : t('compare.current');
   }
 
+  /** A colour image is shown (A): it is compared with the quick look or another colour image. */
+  private colorMode(): boolean {
+    return !!state.composition(state.selectedId);
+  }
+
+  /** Choices for B of a colour image: the quick look, then the other colour images with a stack. */
+  private colorChoices(): string[] {
+    const others = state.compositions
+      .filter((c) => `color:${c.id}` !== state.selectedId && CHANNELS.some((ch) => stackImage(c.channels[ch].filter)))
+      .map((c) => `color:${c.id}`);
+    return [QUICK_ID, ...others];
+  }
+
+  /** Image B of a colour image; the quick look is cropped to the area of the stacks. */
+  private colorImage(): ViewImage | null {
+    const c = state.composition(state.selectedId);
+    const data = c && CHANNELS.map((ch) => stackImage(c.channels[ch].filter)).find(Boolean)?.data;
+    if (!data) return null;
+    // The values under the mouse are those of A's stacks, so B shares their data
+    const view = (img: { width: number; height: number; rgba: Uint8ClampedArray } | null, flip: boolean) =>
+      img && { width: img.width, height: img.height, data, rgba: img.rgba, flipY: flip };
+    if (this.colorId === QUICK_ID) {
+      const q = quickLook();
+      const r = stackRegion();
+      if (!q || !r) return null;
+      const key = [...CHANNELS.map((ch) => q.frames[ch].meta.id), r.x0, r.x1, r.y0, r.y1].join(':');
+      if (this.colorShown?.key !== key) this.colorShown = { key, image: view(renderQuickLook(q, r), bottomUp(q.frames.G.image)) };
+      return this.colorShown.image;
+    }
+    const b = state.composition(this.colorId);
+    const first = b && CHANNELS.map((ch) => stackImage(b.channels[ch].filter)).find(Boolean);
+    if (!b || !first) return null;
+    // Redrawn only when its settings or the stacks change, not on every blink
+    const key = JSON.stringify(b) + ':' + [...state.stacks.values()].map((st) => st.count).join(',');
+    if (this.colorShown?.key !== key || this.colorShown.image?.data !== data) this.colorShown = { key, image: view(renderColor(b, stackImage), bottomUp(first)) };
+    return this.colorShown.image;
+  }
+
   /** Puts image B into the viewer, after computing the version's images if needed. */
   apply(): void {
     if (!this.active) return;
+    if (this.colorMode()) {
+      const b = this.problem() === null ? this.colorImage() : null;
+      this.viewer.setCompare(b && { image: b, mode: this.mode, showSecond: this.showSecond, at: this.at });
+      this.updateStatus();
+      return;
+    }
     if (this.versionId && !isFresh(this.versionId)) {
       if (this.busy) return;
       this.busy = true;
@@ -139,7 +193,17 @@ export class CompareTool {
   /** Why the two images cannot be compared, if they cannot. */
   private problem(): Key | null {
     const a = state.selectedId;
-    if (!a || state.composition(a)) return 'compare.noA';
+    if (this.colorMode()) {
+      if (!this.colorChoices().includes(this.colorId)) this.colorId = QUICK_ID;
+      if (this.colorId === QUICK_ID && !quickLookFrames()) return 'compare.noQuick';
+      const b = this.colorImage();
+      if (!b) return 'compare.noB';
+      const c = state.composition(a)!;
+      const st = CHANNELS.map((ch) => stackImage(c.channels[ch].filter)).find(Boolean);
+      if (!b || !st || b.width !== st.width || b.height !== st.height) return 'compare.size';
+      return null;
+    }
+    if (!a || a === QUICK_ID) return 'compare.noA';
     const av = state.viewable(a);
     const bid = this.secondId();
     const b = state.viewable(bid);
@@ -156,6 +220,12 @@ export class CompareTool {
     const label = (which: 'A' | 'B', id: string | null, version: string | null) =>
       `${which}: ${id ? imageTitle(id) : '–'} (${this.versionName(version)})`;
     const shown = this.mode === 'blink' ? (this.showSecond ? 'B' : 'A') : null;
+    if (this.colorMode()) {
+      this.status.replaceChildren(
+        h('span', { class: shown === 'A' ? 'shown' : '' }, `A: ${a ? imageTitle(a) : '–'}`), h('br'),
+        h('span', { class: shown === 'B' ? 'shown' : '' }, `B: ${imageTitle(this.colorId)}`));
+      return;
+    }
     this.status.replaceChildren(
       h('span', { class: shown === 'A' ? 'shown' : '' }, label('A', a, a?.startsWith('v:') ? a.split(':')[1] : null)), h('br'),
       h('span', { class: shown === 'B' ? 'shown' : '' }, label('B', b, this.versionId)));
@@ -186,9 +256,19 @@ export class CompareTool {
     const problem = this.busy ? null : this.problem();
     const blinking = this.timer !== undefined;
 
-    this.element.replaceChildren(
-      h('p', { class: 'hint' }, t('compare.intro')),
-      h('div', { class: 'compare-b' },
+    const color = this.colorMode();
+    this.element.replaceChildren(...[
+      h('p', { class: 'hint' }, t(color ? 'compare.quickIntro' : 'compare.intro')),
+      color ? h('div', { class: 'compare-b' },
+        h('label', { class: 'inline' }, t('compare.image'), ' ',
+          h('select', {
+            onchange: (e: Event) => {
+              this.colorId = (e.target as HTMLSelectElement).value;
+              this.apply();
+              this.render();
+            },
+          }, this.colorChoices().map((id) => h('option', { value: id, selected: id === this.colorId }, imageTitle(id)))))) : null,
+      color ? null : h('div', { class: 'compare-b' },
         h('label', { class: 'inline' }, t('compare.version'), ' ',
           h('select', {
             onchange: (e: Event) => {
@@ -251,8 +331,8 @@ export class CompareTool {
           }))),
       this.busy ? h('p', { class: 'hint' }, t('compare.computing')) : problem ? h('p', { class: 'warning' }, t(problem)) : this.status,
       h('p', { class: 'hint' }, t(this.mode === 'blink' ? 'compare.blinkHint' : 'compare.splitHint')),
-      this.versionList(),
-    );
+      color ? null : this.versionList(),
+    ].filter((x) => x !== null));
     if (!this.busy) this.updateStatus();
     return this.element;
   }

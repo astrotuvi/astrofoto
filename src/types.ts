@@ -105,6 +105,8 @@ export interface Composition {
   name: string;
   channels: Record<Channel, ChannelSettings>;
   stretch: Stretch;
+  /** Sky brightness 0–1 that "Neutral sky" sets in every channel; SKY_LEVEL if missing. */
+  skyLevel?: number;
 }
 
 /** Saved processing settings, e.g. "ilma tasaväljata", for "what if" comparisons (§4.4). */
@@ -154,6 +156,8 @@ export type ReportSnapshot =
   }
   /** A colour image with the settings it had when added. */
   | { type: 'color'; composition: Composition; view: Region | null }
+  /** The quick look of these raw frames, one per channel. */
+  | { type: 'quickLook'; frames: Record<Channel, string>; view: Region | null }
   | { type: 'profile'; imageId: string; axis: 'row' | 'column'; index: number }
   | { type: 'histogram'; imageId: string; box: Region | null; log: boolean; range: 'full' | 'clipped'; black: number; white: number }
   | { type: 'boxStats'; imageId: string; box: Region }
