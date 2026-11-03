@@ -5,11 +5,11 @@ import { h } from '../dom';
 import { exportBase } from '../export';
 import { Cancelled, download, saveFile } from '../fileio';
 import { type Key, t } from '../i18n';
-import { buildReport, defaultCaption, SECTIONS, sectionOn } from '../report/build';
+import { buildReport, defaultCaption, itemCaption, SECTIONS, sectionOn } from '../report/build';
 import { docxBytes, type FigureFile, figuresZip } from '../report/docx';
 import { renderFigure } from '../report/figures';
 import { blockElement, copyImage, copySection, figureLabel, tableLabel } from '../report/html';
-import { type Block, figures, type ReportDoc } from '../report/model';
+import { type Block, figures, isPanel, pairCaption, type ReportDoc } from '../report/model';
 import { state } from '../state';
 
 const DOCX = {
@@ -31,6 +31,8 @@ export class ReportPage {
   private quiet = false;
   private urls: string[] = [];
   private pending = 0;
+  /** Items shown side by side with another one, in the document last drawn. */
+  private paired = new Set<string>();
 
   constructor() {
     state.on((kind) => {
@@ -114,7 +116,7 @@ export class ReportPage {
 
   private document(doc: ReportDoc): HTMLElement {
     if (!doc.sections.length) return h('div', { class: 'report-doc' }, h('p', { class: 'hint' }, t('report.empty')));
-    const items = state.report.items;
+    this.paired = new Set(figures(doc).flatMap((b) => (b.pairItemId && b.itemId ? [b.itemId, b.pairItemId] : [])));
     return h('article', { class: 'report-doc', lang: doc.lang },
       doc.sections.map((s) => h('section', { class: 'report-section' },
         h('div', { class: 'section-tools no-print' },
@@ -127,24 +129,30 @@ export class ReportPage {
               copySection(s).then(() => this.say(t('report.copied')), (e) => this.say(t('report.copyFailed', { detail: String(e) }), true));
             },
           }, t('report.copy'))),
-        s.blocks.map((b) => this.block(b, items.findIndex((x) => x.id === itemIdOf(b)))))));
+        s.id === 'colour' ? h('p', { class: 'hint no-print' }, t('report.colourHint')) : null,
+        s.blocks.map((b) => this.block(b)))));
   }
 
-  private block(b: Block, index: number): HTMLElement {
+  private block(b: Block): HTMLElement {
     const el = blockElement(b);
     if (b.type === 'figure') this.fillFigure(el, b);
-    if (index < 0 || b.type === 'heading') return el;
+    if (b.type === 'heading') return el;
+    const items = state.report.items;
+    const ids = b.type === 'figure' && b.pairItemId ? [b.itemId, b.pairItemId] : [b.itemId];
+    const indexes = ids.map((id) => items.findIndex((x) => x.id === id));
+    if (indexes.some((i) => i < 0)) return el;
     // After an edit only the caption or text changes, so it is updated in place
     const update = (value: string) => {
       if (b.type === 'paragraph') {
         el.replaceWith(blockElement({ ...b, runs: [{ text: value }] }));
         return;
       }
-      const item = state.report.items[index];
-      const caption = value.trim() || defaultCaption(item.snapshot);
+      const caps = indexes.map((i) => itemCaption(state.report.items[i]));
+      const caption = caps.length === 2 ? pairCaption(caps[0], caps[1]) : caps[0];
       el.querySelector('.caption')!.textContent = b.type === 'figure' ? figureLabel({ ...b, caption }) : tableLabel({ ...b, caption });
     };
-    return h('div', { class: 'report-item' }, el, this.itemTools(index, update));
+    const letters = indexes.length === 2 ? ['a', 'b'] : [undefined];
+    return h('div', { class: 'report-item' }, el, indexes.map((i, k) => this.itemTools(i, update, letters[k])));
   }
 
   /** Draws the figure into its frame, with buttons to copy and save it. */
@@ -172,11 +180,13 @@ export class ReportPage {
     }, (e) => frame.replaceChildren(h('p', { class: 'error' }, String(e))));
   }
 
-  /** Caption or text, order and removing, for an item the student added. */
-  private itemTools(index: number, update: (value: string) => void): HTMLElement {
+  /** Caption or text, order, side by side and removing, for an item the student added; `letter` for a panel. */
+  private itemTools(index: number, update: (value: string) => void, letter?: string): HTMLElement {
     const item = state.report.items[index];
+    const prev = state.report.items[index - 1];
     const n = state.report.items.length;
     const isText = item.snapshot.type === 'text';
+    const canPair = !letter && isPanel(item.snapshot) && !!prev && isPanel(prev.snapshot) && !this.paired.has(prev.id);
     const save = (value: string) => {
       this.quiet = true;
       try {
@@ -188,7 +198,7 @@ export class ReportPage {
       update(value);
     };
     return h('div', { class: 'item-tools no-print' },
-      h('label', { class: 'field' }, t(isText ? 'report.text' : 'report.caption'),
+      h('label', { class: 'field' }, t(isText ? 'report.text' : 'report.caption') + (letter ? ` (${letter})` : ''),
         h('textarea', {
           rows: isText ? 4 : 2,
           value: item.snapshot.type === 'text' ? item.snapshot.text : item.caption,
@@ -199,6 +209,8 @@ export class ReportPage {
       h('div', { class: 'buttons left' },
         h('button', { type: 'button', class: 'small', disabled: index === 0, 'aria-label': t('report.up'), title: t('report.up'), onclick: () => state.moveReportItem(item.id, -1) }, '↑'),
         h('button', { type: 'button', class: 'small', disabled: index === n - 1, 'aria-label': t('report.down'), title: t('report.down'), onclick: () => state.moveReportItem(item.id, 1) }, '↓'),
+        canPair ? h('button', { type: 'button', class: 'small', title: t('report.besideTip'), onclick: () => state.setReportItemBeside(item.id, true) }, t('report.beside')) : null,
+        letter === 'b' ? h('button', { type: 'button', class: 'small', onclick: () => state.setReportItemBeside(item.id, false) }, t('report.separate')) : null,
         h('button', {
           type: 'button',
           class: 'small danger',
@@ -272,8 +284,4 @@ export class ReportPage {
       return t('report.saved', { file });
     });
   }
-}
-
-function itemIdOf(b: Block): string | undefined {
-  return b.type === 'heading' ? undefined : b.itemId;
 }

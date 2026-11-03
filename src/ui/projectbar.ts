@@ -122,18 +122,19 @@ export class ProjectBar {
   }
 
   private async pick(): Promise<void> {
-    if (!this.confirmDiscard()) return;
     try {
+      // The file is picked first, then unsaved changes are asked about: after a confirm()
+      // dialog, Safari no longer lets the click open the file chooser
       const { file, handle } = await pickFile(TYPE);
-      await this.openFile(file, handle, true);
+      await this.openFile(file, handle);
     } catch (e) {
       if (!(e instanceof Cancelled)) this.say(t('project.openFailed', { detail: String(e) }), 'error');
     }
   }
 
-  /** Opens a project file, e.g. one dropped on the files step. */
-  async openFile(file: File, handle: FileHandle | null = null, confirmed = false): Promise<void> {
-    if (!confirmed && !this.confirmDiscard()) return;
+  /** Opens a project file, e.g. one dropped on the files step, after asking about unsaved changes. */
+  async openFile(file: File, handle: FileHandle | null = null): Promise<void> {
+    if (!this.confirmDiscard()) return;
     this.busy = true;
     this.render();
     try {

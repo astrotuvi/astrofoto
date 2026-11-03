@@ -157,12 +157,36 @@ describe('report', () => {
     expect(xml).toContain('<w:pStyle w:val="Heading1"/>');
     expect(xml).toContain('<w:tbl>');
     expect(xml).toContain('Joonis 1. Eelpinge &amp; &lt;müra&gt;');
-    // 16 cm wide, half as high
-    expect(xml).toContain('<wp:extent cx="5760000" cy="2880000"/>');
+    // 12 cm wide, half as high
+    expect(xml).toContain('<wp:extent cx="4320000" cy="2160000"/>');
     // Figure 2 has no image: a note instead
     expect(xml).toContain('Seda pilti praegu pole');
     expect(strFromU8(files['word/_rels/document.xml.rels'])).toContain('Target="media/image1.png"');
     expect(strFromU8(files['word/styles.xml'])).toContain('<w:name w:val="heading 1"/>');
+  });
+
+  it('shows two images side by side as one figure', async () => {
+    await load();
+    const image = (imageId: string) => ({ type: 'image' as const, imageId, range: { mode: 'minmax' as const, black: 0, white: 1 }, view: null });
+    const a = state.addReportItem({ snapshot: image('master:bias'), caption: 'Eelpinge.' });
+    const b = state.addReportItem({ snapshot: image('master:flat:V'), caption: '' });
+    state.addReportItem({ snapshot: { type: 'profile', imageId: 'master:bias', axis: 'row', index: 0 }, caption: '' });
+    state.setReportItemBeside(b.id, true);
+    let list = figures(buildReport());
+    expect(list.map((f) => f.snapshot.type)).toEqual(['pair', 'profile']);
+    expect(list[0]).toMatchObject({ number: 1, widthCm: 16, itemId: a.id, pairItemId: b.id });
+    expect(list[0].caption).toMatch(/^\(a\) Eelpinge\. \(b\) /);
+    expect(list[1]).toMatchObject({ number: 2, widthCm: 12 });
+    const xml = strFromU8(unzipSync(docxBytes(buildReport(), new Map([[1, { png: new Uint8Array(4), width: 2462, height: 900 }]])))['word/document.xml']);
+    expect(xml).toContain('<wp:extent cx="5760000" cy="2105605"/>');
+    // A plot is not put beside an image, and moving an item separates the pair
+    state.setReportItemBeside(state.report.items[2].id, true);
+    expect(figures(buildReport())).toHaveLength(2);
+    state.moveReportItem(a.id, 1);
+    expect(state.report.items.some((x) => x.beside)).toBe(false);
+    state.setReportItemBeside(a.id, true);
+    state.removeReportItem(b.id);
+    expect(state.report.items.some((x) => x.beside)).toBe(false);
   });
 
   it('keeps the report in the project file', async () => {

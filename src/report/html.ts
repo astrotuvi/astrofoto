@@ -95,7 +95,7 @@ export function blockElement(b: Block): HTMLElement {
           h('thead', {}, h('tr', {}, b.header.map((c) => h('th', {}, c)))),
           h('tbody', {}, b.rows.map((r) => h('tr', {}, r.map((c) => h('td', {}, c)))))));
     case 'figure':
-      return h('figure', { class: 'report-figure' },
+      return h('figure', { class: b.snapshot.type === 'pair' ? 'report-figure pair' : 'report-figure' },
         h('div', { class: 'figure-frame' }, h('p', { class: 'hint' }, t('report.drawing'))),
         h('figcaption', { class: 'caption' }, figureLabel(b)));
   }

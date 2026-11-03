@@ -247,18 +247,37 @@ class State {
   }
 
   removeReportItem(id: string): void {
-    this.report.items = this.report.items.filter((x) => x.id !== id);
+    const i = this.report.items.findIndex((x) => x.id === id);
+    if (i < 0) return;
+    this.report.items.splice(i, 1);
+    // The next item would otherwise be put beside another one
+    this.unpair(i);
     this.emit('report');
   }
 
-  /** Moves an item up (−1) or down (+1) in the report. */
+  /** Moves an item up (−1) or down (+1) in the report. Moving separates images shown side by side. */
   moveReportItem(id: string, by: -1 | 1): void {
     const list = this.report.items;
     const i = list.findIndex((x) => x.id === id);
     const j = i + by;
     if (i < 0 || j < 0 || j >= list.length) return;
     [list[i], list[j]] = [list[j], list[i]];
+    for (let k = Math.min(i, j); k <= Math.max(i, j) + 1; k++) this.unpair(k);
     this.emit('report');
+  }
+
+  /** Shows an item beside the previous one, or on its own. */
+  setReportItemBeside(id: string, beside: boolean): void {
+    const item = this.report.items.find((x) => x.id === id);
+    if (!item) return;
+    if (beside) item.beside = true;
+    else delete item.beside;
+    this.emit('report');
+  }
+
+  private unpair(index: number): void {
+    const item = this.report.items[index];
+    if (item) delete item.beside;
   }
 
   setReportSection(id: ReportSectionId, on: boolean): void {

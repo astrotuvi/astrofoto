@@ -170,6 +170,8 @@ export interface ReportItem {
   /** Written by the student; '' = the automatic caption in the current language. */
   caption: string;
   added: string;
+  /** Shown beside the previous item as one figure; both must be images. */
+  beside?: boolean;
 }
 
 export type ReportSectionId = 'title' | 'data' | 'processing' | 'items' | 'tasks' | 'colour' | 'mentorComments';

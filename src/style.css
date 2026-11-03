@@ -601,7 +601,8 @@ form.report-text-form { display: flex; flex-direction: column; align-items: flex
 .report-doc table { border-collapse: collapse; margin-bottom: 0.8rem; }
 .report-doc th, .report-doc td { border: 1px solid #808080; padding: 0.2rem 0.5rem; text-align: left; }
 .report-doc figure { margin: 0.6rem 0; }
-.report-doc img { display: block; width: 100%; height: auto; }
+.report-doc img { display: block; width: 12cm; max-width: 100%; height: auto; }
+.report-doc figure.pair img { width: 16cm; }
 .report-doc .hint { color: #5d6677; }
 .report-doc .warning { color: #9a5b00; }
 .report-section + .report-section { border-top: 1px dashed #d8dce3; margin-top: 0.6rem; padding-top: 0.4rem; }

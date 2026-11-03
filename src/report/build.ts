@@ -18,7 +18,9 @@ import { type Composition, KINDS, type Region, type ReportItem, type ReportSecti
 import { differenceText, imageTitle } from '../ui/compare';
 import { formatCommentDate } from '../ui/comments';
 import { computeVersion, differences, isFresh } from '../versions';
-import { type Block, type FigureSnapshot, type ReportDoc, type Run, type Section, slug } from './model';
+import {
+  type Block, FIGURE_CM, type FigureContent, isPanel, PAIR_CM, pairCaption, type PanelSnapshot, type ReportDoc, type Run, type Section, slug,
+} from './model';
 
 export const SECTIONS: ReportSectionId[] = ['title', 'data', 'processing', 'items', 'tasks', 'colour', 'mentorComments'];
 
@@ -36,6 +38,14 @@ function regionText(r: Region): string {
 
 function baseId(id: string): string {
   return id.startsWith('v:') ? id.split(':').slice(2).join(':') : id;
+}
+
+/** Bias, dark and flat frames and their masters: pictures of the camera, not of the sky. */
+export function isCalibrationImage(id: string): boolean {
+  const b = baseId(id);
+  if (b.startsWith('master:')) return true;
+  const kind = state.frame(b)?.meta.kind;
+  return !!kind && kind !== 'light';
 }
 
 /** The image of a viewer id, computing a version's images when needed. */
@@ -116,6 +126,11 @@ export function defaultCaption(s: ReportSnapshot): string {
   }
 }
 
+/** The student's caption of an item, or the automatic one. */
+export function itemCaption(item: ReportItem): string {
+  return item.caption.trim() || defaultCaption(item.snapshot);
+}
+
 /** Short name of an item, e.g. for the figure file name and the item list. */
 export function itemTitle(s: ReportSnapshot): string {
   switch (s.type) {
@@ -156,12 +171,18 @@ class Builder {
 
   constructor(private ctx: MeasureContext) {}
 
-  addFigure(snapshot: FigureSnapshot, caption: string, name: string, itemId?: string): Block {
+  addFigure(snapshot: FigureContent, caption: string, name: string, itemId?: string, pairItemId?: string): Block {
     const number = ++this.figure;
     return {
-      type: 'figure', number, caption, snapshot, itemId,
+      type: 'figure', number, caption, snapshot, itemId, pairItemId,
+      widthCm: snapshot.type === 'pair' ? PAIR_CM : FIGURE_CM,
       fileName: `${t('report.figureFile')}-${String(number).padStart(2, '0')}-${slug(name)}.png`,
     };
+  }
+
+  /** Two images side by side as one figure. */
+  addPair(a: PanelSnapshot, b: PanelSnapshot, captions: [string, string], name: string, itemIds: [string?, string?] = []): Block {
+    return this.addFigure({ type: 'pair', panels: [a, b] }, pairCaption(...captions), name, ...itemIds);
   }
 
   addTable(caption: string, header: string[], rows: string[][], itemId?: string): Block {
@@ -291,12 +312,22 @@ class Builder {
   items(): Block[] {
     const items = state.report.items;
     if (!items.length) return [];
-    return [{ type: 'heading', level: 2, text: t('report.section.items') }, ...items.map((item) => this.item(item))];
+    const out: Block[] = [{ type: 'heading', level: 2, text: t('report.section.items') }];
+    for (let i = 0; i < items.length; i++) {
+      const [a, b] = [items[i], items[i + 1]];
+      if (b && isPanel(a.snapshot) && isPanel(b.snapshot) && b.beside) {
+        out.push(this.addPair(a.snapshot, b.snapshot, [itemCaption(a), itemCaption(b)], `${itemTitle(a.snapshot)} ${itemTitle(b.snapshot)}`, [a.id, b.id]));
+        i++;
+      } else {
+        out.push(this.item(a));
+      }
+    }
+    return out;
   }
 
   item(item: ReportItem): Block {
     const s = item.snapshot;
-    const caption = item.caption.trim() || defaultCaption(s);
+    const caption = itemCaption(item);
     if (s.type === 'text') return para(s.text, item.id);
     if (s.type === 'boxStats') {
       const img = reportImage(s.imageId);
@@ -346,13 +377,18 @@ class Builder {
       return f !== null && state.stacks.has(`stack:${f}`);
     }));
     if (!ready.length) return [];
-    // The quick look of the raw frames first, as the "before" image
+    const color = (c: Composition) => ({ type: 'color' as const, composition: structuredClone(c), view: null });
+    const name = (c: Composition) => c.name || compositionName(c);
+    // The quick look of the raw frames beside the first colour image, as "before" and "after"
     const q = quickLook();
     const frames = q && { R: q.frames.R.meta.id, G: q.frames.G.meta.id, B: q.frames.B.meta.id };
+    const [first, ...rest] = ready;
     return [
       { type: 'heading', level: 2, text: t('report.section.colour') },
-      ...(frames ? [this.addFigure({ type: 'quickLook', frames, view: null }, quickCaption(frames), t('quick.title'))] : []),
-      ...ready.map((c) => this.addFigure({ type: 'color', composition: structuredClone(c), view: null }, colorCaption(c), c.name || compositionName(c))),
+      frames
+        ? this.addPair({ type: 'quickLook', frames, view: null }, color(first), [quickCaption(frames), colorCaption(first)], `${t('quick.title')} ${name(first)}`)
+        : this.addFigure(color(first), colorCaption(first), name(first)),
+      ...rest.map((c) => this.addFigure(color(c), colorCaption(c), name(c))),
     ];
   }
 

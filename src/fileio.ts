@@ -77,12 +77,20 @@ export async function pickFile(type: PickerType): Promise<{ file: File; handle: 
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = Object.values(type.accept).flat().join(',');
+    input.hidden = true;
+    // Safari may drop an input that is not in the page while its dialog is open, and then the
+    // chosen file never arrives; so it stays in the page until a file is chosen or the dialog closes
+    document.body.append(input);
     input.addEventListener('change', () => {
+      input.remove();
       const file = input.files?.[0];
       if (file) resolve({ file, handle: null });
       else reject(new Cancelled());
     });
-    input.addEventListener('cancel', () => reject(new Cancelled()));
+    input.addEventListener('cancel', () => {
+      input.remove();
+      reject(new Cancelled());
+    });
     input.click();
   });
 }

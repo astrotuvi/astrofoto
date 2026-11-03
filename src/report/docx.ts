@@ -1,7 +1,7 @@
 // The report as a Word file (.docx), written directly as Office Open XML and zipped with fflate.
 // Only what survives moving into Google Docs is used (§4.6): heading styles "heading 1–3",
 // paragraphs with bold and italic, tables with simple cells and plain borders, images on their
-// own line at the full text width (16 cm on A4), and captions as separate text.
+// own line, 12 cm wide (two side by side 16 cm), and captions as separate text.
 
 import { strToU8, zipSync } from 'fflate';
 import type { Block, ReportDoc, Run } from './model';
@@ -14,7 +14,6 @@ export interface FigureFile {
 }
 
 const EMU_PER_CM = 360000;
-const TEXT_WIDTH_CM = 16;
 /** Text width in twentieths of a point: A4 (21 cm) minus 2.5 cm margins. */
 const TEXT_WIDTH_TWIPS = 9072;
 const MARGIN_TWIPS = 1417;
@@ -61,8 +60,8 @@ function table(header: string[], rows: string[][]): string {
     + '</w:tbl>';
 }
 
-function image(rid: string, id: number, name: string, f: FigureFile): string {
-  const cx = TEXT_WIDTH_CM * EMU_PER_CM;
+function image(rid: string, id: number, name: string, f: FigureFile, widthCm: number): string {
+  const cx = widthCm * EMU_PER_CM;
   const cy = Math.round((cx * f.height) / f.width);
   return '<w:r><w:drawing>'
     + '<wp:inline distT="0" distB="0" distL="0" distR="0">'
@@ -118,7 +117,7 @@ export function docxBytes(doc: ReportDoc, images: Map<number, FigureFile>): Uint
           const rid = `rIdImg${b.number}`;
           files[`word/media/image${b.number}.png`] = f.png;
           rels.push(`<Relationship Id="${rid}" Type="${REL}/image" Target="media/image${b.number}.png"/>`);
-          body.push(paragraph(image(rid, b.number, b.fileName, f), undefined, true));
+          body.push(paragraph(image(rid, b.number, b.fileName, f, b.widthCm), undefined, true));
         } else {
           body.push(paragraph(textRuns(t('report.missing'), '<w:i/>'), undefined, true));
         }

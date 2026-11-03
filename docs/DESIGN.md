@@ -190,7 +190,7 @@ Steps unlock in order. A finished step can be reopened at any time. Changing it 
   - Filters as in §2.3: B, V, R or g, r, i when all three exist, else the shortest, middle and longest wavelength. Of each filter, the frames taken closest together in time are used.
   - Fully automatic settings, with no sliders: asinh stretch (strength 100), white point at the 99.9th percentile of each frame, black point for a neutral 10 % grey sky.
   - It is shown in the viewer as a colour image (pixel readout of the raw values). It is not saved in the project file; it is recomputed from the frames.
-  - At the end, a finished colour image can be compared with it in the **"Võrdle"** tab (blinking or a split line); the quick look is then cropped to the area of the stacks. The report's colour section starts with it as the "before" image, and it can be added to the report like any image.
+  - At the end, a finished colour image can be compared with it in the **"Võrdle"** tab (blinking or a split line); the quick look is then cropped to the area of the stacks. The report's colour section shows it beside the first colour image as the "before" image, and it can be added to the report like any image.
 
 ### 3.2 Calibration
 
@@ -352,7 +352,7 @@ The report is one of the app's most important outputs. It is rarely the final do
   - data description: object, telescope, camera, filters, number of frames and exposures, from the headers;
   - processing steps, with formulas and parameters, written as readable sentences from the log, not as a raw log;
   - the tasks with the student's answers and measured values;
-  - the final colour images, after the quick look of the raw frames (§3.1) as the "before" image.
+  - the final colour images; the first one beside the quick look of the raw frames (§3.1) as the "before" image.
 - Mentor comments are **left out by default**, because they are feedback, not part of the student's work. They can be included for the mentor's own copy.
 - The report is written in the current language. Switching language and exporting again gives the other language.
 
@@ -378,18 +378,18 @@ The report uses only structures that survive copying into Google Docs and Word w
 - **Formulas are plain text** with Unicode characters, e.g. `σ₂₅ = σ₁ / √25`. Google Docs does not accept pasted MathML or LaTeX.
 - **Numbers** use the language's decimal separator (comma in Estonian) and always have units.
 - **Figures are self-contained PNG images**:
-  - axis labels, units, legends and a scale bar in arcseconds (when the pixel scale is known) are drawn into the image, so the figure makes sense without the app;
+  - axis labels, units, legends and a scale bar in arcseconds (when the pixel scale is known; not on bias, dark and flat frames and their masters, which show the camera, not the sky) are drawn into the image, so the figure makes sense without the app;
   - the text inside figures uses the report language;
-  - a fixed width of 1600 px gives a sharp image at full page width (16 cm) in print;
+  - every figure is 12 cm wide in the document, about 1200 px (250 dpi in print). Larger images are reduced; smaller ones are enlarged by a whole number (2×, 3×, …) up to 1200 px, without smoothing, so each pixel is an even, sharp square. Text in figures has the same size in all of them;
   - plots have a white background, so they look right in a document even if the app is in a dark theme.
 - **Captions are separate text** below each image, e.g. *"Joonis 3. Normeeritud tasaväljakaader filtris g. Servad on keskmisest 8 % tumedamad."*, so they can be edited and become part of the master document's text. Figures and tables are numbered automatically.
-- **No page layout tricks**: no columns, text boxes or floating images. Each image is on its own line, so it does not move around when pasted.
+- **No page layout tricks**: no columns, text boxes or floating images. Each image is on its own line, so it does not move around when pasted. Two images side by side are drawn into **one PNG** as panels (a) and (b), 16 cm wide, with one figure number and a caption "(a) … (b) …"; each panel has its own legend and scale bar. Only images (not plots) can be put side by side.
 
 #### Technical notes
 
 - The report is built once as a **simple document model**: a list of headings, paragraphs, tables, figures and captions. It is then rendered three ways: as HTML for the report page and copying, as `.docx`, and as figure files. This keeps all three versions consistent.
-- `.docx` is written in the browser as plain Office Open XML and zipped with `fflate`, so it works offline and adds no library. The report only needs heading styles named "heading 1–3", paragraphs with bold and italic, tables with simple cells and direct borders, inline PNG images 16 cm wide, and a "caption" style. The text font is Arial, the Google Docs default, so pasted text looks native.
-- "Lisa aruandesse" is in the viewer: next to the image picker (the image as shown, with its display range, the zoomed part and the box or profile line of the open tab; a colour image with a copy of its settings), and under the profile, histogram and box statistics results. On the report page the student can also add their own text paragraphs.
+- `.docx` is written in the browser as plain Office Open XML and zipped with `fflate`, so it works offline and adds no library. The report only needs heading styles named "heading 1–3", paragraphs with bold and italic, tables with simple cells and direct borders, inline PNG images 12 cm wide, and a "caption" style. The text font is Arial, the Google Docs default, so pasted text looks native.
+- "Lisa aruandesse" is in the viewer: next to the image picker (the image as shown, with its display range, the zoomed part and the box or profile line of the open tab; a colour image with a copy of its settings), and under the profile, histogram and box statistics results. On the report page the student can also add their own text paragraphs, and put an image beside the previous one ("Kõrvuti eelmisega", undone with "Eralda"; moving or removing an item also separates them).
 - Captions left empty are written by the app in the current language, e.g. *"Koondkaader: tasaväljakaader g. Hallskaala 0,971…1,055."* Figures and tables are numbered through the whole report; figure files are named after the number and the item, e.g. `joonis-01-koondkaader-tasavaljakaader-g.png`.
 - Figures whose image does not exist any more (a step undone, a version removed) show a note instead of the image.
 - The **"Kopeeri"** button writes both `text/html` and `text/plain` to the clipboard (Clipboard API). "Kopeeri pilt" writes `image/png`. This works in Chrome, Edge, Safari and recent Firefox versions.

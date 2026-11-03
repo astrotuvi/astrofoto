@@ -1,6 +1,8 @@
-// Draws report figures as PNG images that make sense without the app (§4.6): a fixed width of
-// 1600 px, a white background, the labels in the report language, a grey scale legend and a
-// scale bar in arcseconds (in pixels when the pixel scale is not known). Runs in the browser.
+// Draws report figures as PNG images that make sense without the app (§4.6): shown 12 cm wide,
+// about 1200 px (250 dpi) with small images enlarged by whole numbers, two images side by side
+// 16 cm wide as panels (a) and (b), a white background, the labels in the report language, a grey scale legend and a
+// scale bar in arcseconds (in pixels when the pixel scale is not known; none on bias, dark
+// and flat frames). Runs in the browser.
 
 import { type ColorImage, render as renderColor } from '../color';
 import { bottomUp, type FitsImage } from '../fits';
@@ -14,14 +16,22 @@ import { histogramData, rangeMarkers } from '../tools/histogram';
 import { drawPlot } from '../tools/plot';
 import { profileValues } from '../tools/profile';
 import type { DisplayScale, Region } from '../types';
-import { levelText, reportImage, unitOf } from './build';
-import type { FigureSnapshot } from './model';
+import { isCalibrationImage, levelText, reportImage, unitOf } from './build';
+import { FIGURE_CM, type FigureContent, type FigureSnapshot, PAIR_CM, type PanelSnapshot } from './model';
 
-export const FIGURE_WIDTH = 1600;
-/** Tall images are made narrower so they fit on a page. */
+/** Larger images are reduced to this, and smaller ones enlarged up to it: about 250 dpi at 12 cm. */
+const MAX_WIDTH = 1200;
+/** Room for the legend and scale bar under small images. */
+const MIN_WIDTH = 800;
+/** Tall images are made smaller so they fit on a page, at most 4:3. */
 const MAX_IMAGE_HEIGHT = 1600;
+/** Space between two images side by side, in cm; each panel is drawn MAX_WIDTH px wide. */
+const GAP_CM = 0.4;
+const PANEL_CM = (PAIR_CM - GAP_CM) / 2;
+/** Sizes below are in figure pixels per 0.01 cm when printed (`u`), so text is the same size in every figure. */
 const LEGEND_HEIGHT = 130;
-const FONT = '28px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+const FAMILY = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+const font = (u: number, bold = false) => `${bold ? 'bold ' : ''}${Math.round(28 * u)}px ${FAMILY}`;
 const PLOT_COLORS = { fg: '#000000', grid: '#cccccc', line: '#1f5fbf' };
 
 export interface RenderedFigure {
@@ -100,57 +110,72 @@ interface ImageLayout {
   w: number;
   h: number;
   k: number;
+  /** Figure pixels per 0.01 cm, so text and lines have the same size in every figure. */
+  u: number;
+  /** The span of the legend and scale bar: the image, or more of the figure under small images. */
+  lx0: number;
+  lx1: number;
 }
 
-/** Draws a cropped bitmap scaled to the figure width, with room for the legend below. */
-function layoutImage(bitmap: HTMLCanvasElement): ImageLayout {
-  const k = Math.min(FIGURE_WIDTH / bitmap.width, MAX_IMAGE_HEIGHT / bitmap.height);
+/**
+ * Draws a cropped bitmap with room for the legend below. Large images are reduced; small ones are
+ * enlarged by a whole number, so each pixel becomes an even, sharp square. A panel of two images
+ * side by side is always MAX_WIDTH px wide.
+ */
+function layoutImage(bitmap: HTMLCanvasElement, panel = false): ImageLayout {
+  const fit = Math.min(MAX_WIDTH / bitmap.width, MAX_IMAGE_HEIGHT / bitmap.height);
+  const k = fit < 1 ? fit : Math.floor(fit);
   const w = Math.round(bitmap.width * k);
   const h = Math.round(bitmap.height * k);
-  const [c, ctx] = canvas(FIGURE_WIDTH, h + LEGEND_HEIGHT);
-  const x = Math.round((FIGURE_WIDTH - w) / 2);
+  const width = panel ? MAX_WIDTH : Math.max(w, MIN_WIDTH, Math.ceil((h * 3) / 4));
+  const u = width / ((panel ? PANEL_CM : FIGURE_CM) * 100);
+  const [c, ctx] = canvas(width, h + Math.round(LEGEND_HEIGHT * u));
+  const x = Math.round((width - w) / 2);
   // Enlarged pixels stay sharp, so single pixels can be seen; reduced images are smoothed
   ctx.imageSmoothingEnabled = k < 1;
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(bitmap, x, 0, w, h);
-  return { canvas: c, ctx, x, y: 0, w, h, k };
+  const lw = Math.min(width, Math.max(w, 0.75 * width));
+  const lx0 = Math.round((width - lw) / 2);
+  return { canvas: c, ctx, x, y: 0, w, h, k, u, lx0, lx1: lx0 + lw };
 }
 
 function drawScaleBar(l: ImageLayout, scale: number | undefined): void {
-  const { ctx } = l;
+  const { ctx, u } = l;
   const arcsec = !!scale;
   // About a fifth of the image width
   const target = (l.w / 5 / l.k) * (scale ?? 1);
   const len = niceLength(target, arcsec);
   const px = (len / (scale ?? 1)) * l.k;
-  const right = l.x + l.w;
+  const right = l.lx1;
   const x0 = right - px;
-  const y = l.h + 70;
+  const y = l.h + 70 * u;
   ctx.save();
   ctx.strokeStyle = '#000';
   ctx.fillStyle = '#000';
-  ctx.lineWidth = 6;
+  ctx.lineWidth = 6 * u;
   ctx.beginPath();
   ctx.moveTo(x0, y);
   ctx.lineTo(right, y);
-  ctx.moveTo(x0, y - 14);
-  ctx.lineTo(x0, y + 14);
-  ctx.moveTo(right, y - 14);
-  ctx.lineTo(right, y + 14);
+  ctx.moveTo(x0, y - 14 * u);
+  ctx.lineTo(x0, y + 14 * u);
+  ctx.moveTo(right, y - 14 * u);
+  ctx.lineTo(right, y + 14 * u);
   ctx.stroke();
-  ctx.font = FONT;
+  ctx.font = font(u);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'bottom';
-  ctx.fillText(scaleBarLabel(len, arcsec), (x0 + right) / 2, y - 18);
+  ctx.fillText(scaleBarLabel(len, arcsec), (x0 + right) / 2, y - 18 * u);
   ctx.restore();
 }
 
 /** Grey bar from black to white in the scale of the image, with the values at its ends. */
 function drawGreyLegend(l: ImageLayout, black: number, white: number, unit: string, scale: DisplayScale): void {
-  const { ctx } = l;
-  const w = Math.min(500, l.w / 2);
-  const x = l.x;
-  const y = l.h + 30;
+  const { ctx, u } = l;
+  const w = Math.min(500 * u, (l.lx1 - l.lx0) / 2);
+  const x = l.lx0;
+  const y = l.h + 30 * u;
+  const bar = 28 * u;
   const g = ctx.createLinearGradient(x, 0, x + w, 0);
   for (let i = 0; i <= 32; i++) {
     const c = greyLevel(i / 32, 0, 1, scale);
@@ -158,18 +183,33 @@ function drawGreyLegend(l: ImageLayout, black: number, white: number, unit: stri
   }
   ctx.save();
   ctx.fillStyle = g;
-  ctx.fillRect(x, y, w, 28);
+  ctx.fillRect(x, y, w, bar);
   ctx.strokeStyle = '#000';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(x, y, w, 28);
+  ctx.lineWidth = 2 * u;
+  ctx.strokeRect(x, y, w, bar);
   ctx.fillStyle = '#000';
-  ctx.font = FONT;
+  ctx.font = font(u);
   ctx.textBaseline = 'top';
   ctx.textAlign = 'left';
   const [b, wt] = levelText(black, white);
-  ctx.fillText(b, x, y + 36);
+  ctx.fillText(b, x, y + 36 * u);
   ctx.textAlign = 'right';
-  ctx.fillText(`${wt}${unit}`, x + w, y + 36);
+  ctx.fillText(`${wt}${unit}`, x + w, y + 36 * u);
+  ctx.restore();
+}
+
+/** The letter of a panel, in a white square at the top left corner of the image. */
+function drawPanelLetter(l: ImageLayout, letter: string): void {
+  const { ctx, u } = l;
+  const s = 44 * u;
+  ctx.save();
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(l.x, l.y, s, s);
+  ctx.fillStyle = '#000000';
+  ctx.font = font(u, true);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(letter, l.x + s / 2, l.y + s / 2);
   ctx.restore();
 }
 
@@ -184,7 +224,7 @@ function drawMarks(l: ImageLayout, img: FitsImage, view: Region, s: Extract<Figu
   ctx.beginPath();
   ctx.rect(l.x, l.y, l.w, l.h);
   ctx.clip();
-  ctx.lineWidth = 4;
+  ctx.lineWidth = 4 * l.u;
   if (s.box) {
     const b = s.box;
     ctx.strokeStyle = '#00d0ff';
@@ -207,7 +247,10 @@ function drawMarks(l: ImageLayout, img: FitsImage, view: Region, s: Extract<Figu
   ctx.restore();
 }
 
-function imageFigure(s: Extract<FigureSnapshot, { type: 'image' }>): HTMLCanvasElement | null {
+/** For a panel of two images side by side: its letter. */
+type Panel = string | undefined;
+
+function imageFigure(s: Extract<FigureSnapshot, { type: 'image' }>, panel?: Panel): HTMLCanvasElement | null {
   const img = reportImage(s.imageId);
   if (!img) return null;
   const { black, white } = displayRange(sorted(img.data), s.range.mode, s.range.black, s.range.white);
@@ -223,24 +266,26 @@ function imageFigure(s: Extract<FigureSnapshot, { type: 'image' }>): HTMLCanvasE
     }
     out[o + 3] = 255;
   });
-  const l = layoutImage(bitmap);
+  const l = layoutImage(bitmap, !!panel);
   drawMarks(l, img, view, s);
   drawGreyLegend(l, black, white, unitOf(s.imageId), scale);
-  drawScaleBar(l, state.profile ? pixelScale(img.header, state.profile) : undefined);
+  // Calibration frames show the camera, so a length on the sky means nothing there
+  if (!isCalibrationImage(s.imageId)) drawScaleBar(l, state.profile ? pixelScale(img.header, state.profile) : undefined);
+  if (panel) drawPanelLetter(l, panel);
   return l.canvas;
 }
 
-function colorFigure(s: Extract<FigureSnapshot, { type: 'color' }>): HTMLCanvasElement | null {
+function colorFigure(s: Extract<FigureSnapshot, { type: 'color' }>, panel?: Panel): HTMLCanvasElement | null {
   const first = (['R', 'G', 'B'] as const).map((k) => stackImage(s.composition.channels[k].filter)).find(Boolean);
-  return colorBitmap(renderColor(s.composition, stackImage), first, s.view);
+  return colorBitmap(renderColor(s.composition, stackImage), first, s.view, panel);
 }
 
-function quickLookFigure(s: Extract<FigureSnapshot, { type: 'quickLook' }>): HTMLCanvasElement | null {
+function quickLookFigure(s: Extract<FigureSnapshot, { type: 'quickLook' }>, panel?: Panel): HTMLCanvasElement | null {
   const q = quickLookOf(s.frames);
-  return q && colorBitmap(renderQuickLook(q), q.frames.G.image, s.view);
+  return q && colorBitmap(renderQuickLook(q), q.frames.G.image, s.view, panel);
 }
 
-function colorBitmap(color: ColorImage | null, first: FitsImage | undefined, v: Region | null): HTMLCanvasElement | null {
+function colorBitmap(color: ColorImage | null, first: FitsImage | undefined, v: Region | null, panel?: Panel): HTMLCanvasElement | null {
   if (!color || !first) return null;
   const view = validView(v, color);
   const rgba = color.rgba;
@@ -250,13 +295,33 @@ function colorBitmap(color: ColorImage | null, first: FitsImage | undefined, v: 
     out[o + 2] = rgba[i * 4 + 2];
     out[o + 3] = 255;
   });
-  const l = layoutImage(bitmap);
+  const l = layoutImage(bitmap, !!panel);
   drawScaleBar(l, state.profile ? pixelScale(first.header, state.profile) : undefined);
+  if (panel) drawPanelLetter(l, panel);
   return l.canvas;
 }
 
-/** Plots are drawn at 800 × 400 CSS pixels, twice as sharp. */
-const PLOT = { width: FIGURE_WIDTH / 2, height: 400, pixelRatio: 2, colors: PLOT_COLORS, background: '#ffffff' };
+function panelFigure(s: PanelSnapshot, letter: string): HTMLCanvasElement | null {
+  switch (s.type) {
+    case 'image': return imageFigure(s, letter);
+    case 'color': return colorFigure(s, letter);
+    case 'quickLook': return quickLookFigure(s, letter);
+  }
+}
+
+/** Two images side by side, aligned at the top. */
+function pairFigure(panels: PanelSnapshot[]): HTMLCanvasElement | null {
+  const [a, b] = panels.map((p, i) => panelFigure(p, 'ab'[i]));
+  if (!a || !b) return null;
+  const gap = Math.round((GAP_CM * MAX_WIDTH) / PANEL_CM);
+  const [c, ctx] = canvas(a.width + gap + b.width, Math.max(a.height, b.height));
+  ctx.drawImage(a, 0, 0);
+  ctx.drawImage(b, a.width + gap, 0);
+  return c;
+}
+
+/** Plots are drawn at 600 × 300 CSS pixels (50 per cm), 1200 px wide. */
+const PLOT = { width: 600, height: 300, pixelRatio: MAX_WIDTH / 600, colors: PLOT_COLORS, background: '#ffffff' };
 
 function profileFigure(s: Extract<FigureSnapshot, { type: 'profile' }>): HTMLCanvasElement | null {
   const img = reportImage(s.imageId);
@@ -290,8 +355,9 @@ function histogramFigure(s: Extract<FigureSnapshot, { type: 'histogram' }>): HTM
   return c;
 }
 
-function draw(s: FigureSnapshot): HTMLCanvasElement | null {
+function draw(s: FigureContent): HTMLCanvasElement | null {
   switch (s.type) {
+    case 'pair': return pairFigure(s.panels);
     case 'image': return imageFigure(s);
     case 'color': return colorFigure(s);
     case 'quickLook': return quickLookFigure(s);
@@ -307,7 +373,7 @@ function toBlob(c: HTMLCanvasElement): Promise<Blob> {
 const cache = new Map<string, Promise<RenderedFigure | null>>();
 
 /** The figure as PNG; null when its image does not exist now (e.g. a step was undone). */
-export function renderFigure(s: FigureSnapshot): Promise<RenderedFigure | null> {
+export function renderFigure(s: FigureContent): Promise<RenderedFigure | null> {
   const key = `${getLang()}:${JSON.stringify(s)}`;
   let p = cache.get(key);
   if (!p) {
