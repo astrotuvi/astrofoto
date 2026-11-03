@@ -73,6 +73,8 @@ export const en: Record<Key, string> = {
   'viewer.empty': 'Load files and choose one in the table.',
   'viewer.hover': 'Move the mouse over the image to see pixel values.',
   'viewer.readout': 'x = {x}, y = {y}: {v} ADU',
+  'viewer.resize': 'Image area height',
+  'viewer.resizeTip': 'Drag to make the image area taller or shorter. Double-click to restore the default height.',
 
   'zoom.label': 'Zoom',
   'zoom.fit': 'Fit',

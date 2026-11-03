@@ -71,6 +71,8 @@ export const et = {
   'viewer.empty': 'Lae failid ja vali tabelist üks fail.',
   'viewer.hover': 'Vii hiir pildile, et näha piksli väärtust.',
   'viewer.readout': 'x = {x}, y = {y}: {v} ADU',
+  'viewer.resize': 'Pildiala kõrgus',
+  'viewer.resizeTip': 'Lohista, et teha pildiala kõrgemaks või madalamaks. Topeltklõps taastab algse kõrguse.',
 
   'zoom.label': 'Suurendus',
   'zoom.fit': 'Sobita',

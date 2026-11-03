@@ -15,6 +15,7 @@ import { renderProfile } from '../tools/profile';
 import { type DisplayScale, KINDS, type RangeMode, type ReportSnapshot } from '../types';
 import { type Marker, type ProfileAxis, type Tool, Viewer } from '../viewer';
 import { CompareTool } from './compare';
+import { HeightGrip } from './heightgrip';
 import { renderHeader } from './header';
 
 export type Tab = 'pixel' | 'profile' | 'box' | 'histogram' | 'compare' | 'header';
@@ -74,6 +75,7 @@ export class ViewerPanel {
   private hist = { useBox: false, log: false, range: 'full' as 'full' | 'clipped' };
   private headerFilter = '';
   private readout = h('div', { class: 'readout', 'aria-live': 'off' });
+  private grip: HeightGrip;
   private zoomLabel = h('span', { class: 'zoom-label' });
   private toolArea = h('div', { class: 'tool-area' });
   private sortedCache = new WeakMap<Float32Array, Float32Array>();
@@ -98,6 +100,7 @@ export class ViewerPanel {
       },
     });
     this.compare = new CompareTool(this.viewer);
+    this.grip = new HeightGrip(this.viewer.element, this.element);
     state.on((kind) => {
       if (kind === 'selection' || kind === 'frames' || kind === 'masters' || kind === 'calibrated' || kind === 'aligned' || kind === 'stacks') this.showImage();
       if (kind === 'overlay' || kind === 'settings') this.updateOverlay();
@@ -164,6 +167,7 @@ export class ViewerPanel {
       h('div', { class: 'viewer-head' }, this.imageSelect(), this.addButton(() => this.imageSnapshot(), 'report.addImageTip'), this.reportStatus),
       this.toolbar(),
       this.viewer.element,
+      this.grip.element,
       this.readout,
       h('div', { class: 'tabs', role: 'tablist' },
         this.tabs().map((tab) => h('button', {
@@ -175,6 +179,7 @@ export class ViewerPanel {
         }, t(tab.label)))),
       this.toolArea,
     );
+    this.grip.render();
     this.viewer.setTool(this.tool());
     this.compare.setActive(this.shownTab() === 'compare');
     this.showReadout(null);
