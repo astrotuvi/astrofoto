@@ -311,7 +311,7 @@ export class ViewerPanel {
         this.viewer.setRange(this.black, this.white, this.scale);
         this.render();
       },
-    }, (['minmax', 'p995', 'p99', 'manual'] as RangeMode[]).map((m) =>
+    }, (['minmax', 'p999', 'p995', 'p99', 'manual'] as RangeMode[]).map((m) =>
       h('option', { value: m, selected: m === this.rangeMode }, t(`display.${m}` as Key))));
     const scale = h('select', {
       'aria-label': t('display.scale'),

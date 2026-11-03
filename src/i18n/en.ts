@@ -142,6 +142,7 @@ export const en: Record<Key, string> = {
   'display.range': 'Display',
   'display.tip': 'Which values are shown as black and which as white. This changes only the view, not the data.',
   'display.minmax': 'Min–max',
+  'display.p999': '0.1–99.9%',
   'display.p995': '0.5–99.5%',
   'display.p99': '1–99%',
   'display.manual': 'Manual',

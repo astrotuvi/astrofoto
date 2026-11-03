@@ -140,6 +140,7 @@ export const et = {
   'display.range': 'Kuvamine',
   'display.tip': 'Mis väärtused näidatakse mustana ja mis valgena. See muudab ainult vaadet, mitte andmeid.',
   'display.minmax': 'Min–maks',
+  'display.p999': '0,1–99,9 %',
   'display.p995': '0,5–99,5 %',
   'display.p99': '1–99 %',
   'display.manual': 'Käsitsi',

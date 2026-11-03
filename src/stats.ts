@@ -131,7 +131,7 @@ export function histogram(v: Float32Array, lo: number, hi: number, bins: number)
 /** Black and white display levels of a sorted image for a range mode; 'manual' keeps the given ones. */
 export function displayRange(sorted: Float32Array, mode: RangeMode, black = 0, white = 1): { black: number; white: number } {
   if (mode === 'manual' || sorted.length === 0) return { black, white };
-  const p = mode === 'p995' ? 0.5 : mode === 'p99' ? 1 : 0;
+  const p = mode === 'p999' ? 0.1 : mode === 'p995' ? 0.5 : mode === 'p99' ? 1 : 0;
   return {
     black: p ? sortedPercentile(sorted, p) : sorted[0],
     white: p ? sortedPercentile(sorted, 100 - p) : sorted[sorted.length - 1],
